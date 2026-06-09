@@ -143,6 +143,10 @@ export class VRUI {
       { id: 'reset',  label: '🔄 RESET',   x: PAD, y, w: bw, h: BTN_H, color: C.btnReset,  action: () => this.cb.resetJoints() },
       { id: 'switch', label: '🔀 SWITCH',  x: PAD + bw + 16, y, w: bw, h: BTN_H, color: C.btnSwitch, action: () => this.cb.switchRobot() },
     );
+    y += BTN_GAP;
+    btns.push(
+      { id: 'exit', label: '🚪 EXIT VR/AR', x: PAD, y, w: CW - PAD * 2, h: BTN_H, color: '#aa3333', action: () => { if (this.cb.exitXR) this.cb.exitXR(); } }
+    );
     return btns;
   }
 
@@ -491,7 +495,7 @@ export class VRUI {
   }
 
   _drawTelemetry(ctx, active) {
-    const y0 = 510;
+    const y0 = 540; // Shifted down to make room for EXIT button
     ctx.strokeStyle = 'rgba(255,204,0,0.15)';
     ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(PAD, y0); ctx.lineTo(CW - PAD, y0); ctx.stroke();

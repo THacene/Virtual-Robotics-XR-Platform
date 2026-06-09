@@ -20,7 +20,7 @@ import { HandTrackingController } from './xr/HandTrackingController.js';
 const BH = 0.25;
 
 // ===== RENDERER =====
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
@@ -136,7 +136,7 @@ gB.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
 world.addBody(gB);
 
 // ===== FACTORY ENVIRONMENT =====
-buildFactory(scene, world, mGnd);
+const factoryGroup = buildFactory(scene, world, mGnd);
 
 // ===== CARTON BOX TEXTURE (carton brun + numéro) =====
 function makeCartonTexture(num) {
@@ -799,6 +799,7 @@ function setupXRSystems() {
       if (isBoxBetweenFingers(robotApi)) return 'READY';
       return 'STANDBY';
     },
+    exitXR: () => { if (_xrSess) _xrSess.end(); }
   };
 
   // 1) VR Controller Manager
@@ -835,7 +836,11 @@ async function startXRSession(mode) {
     _xrSess = session;
     await renderer.xr.setSession(session);
 
-    if (mode === 'immersive-ar') { scene.background = null; renderer.setClearAlpha(0); }
+    if (mode === 'immersive-ar') { 
+      scene.background = null; 
+      renderer.setClearAlpha(0); 
+      if (factoryGroup) factoryGroup.visible = false;
+    }
 
     setupXRSystems();
     xrHideUI();
@@ -846,7 +851,11 @@ async function startXRSession(mode) {
 
     session.addEventListener('end', () => {
       _xrSess = null;
-      if (mode === 'immersive-ar') { scene.background = new THREE.Color(0x8a9aaa); renderer.setClearAlpha(1); }
+      if (mode === 'immersive-ar') { 
+        scene.background = new THREE.Color(0x8a9aaa); 
+        renderer.setClearAlpha(1); 
+        if (factoryGroup) factoryGroup.visible = true;
+      }
       cleanupXRSystems();
       xrShowUI();
       _xrExit.style.display = 'none';
