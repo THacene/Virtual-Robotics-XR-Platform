@@ -429,7 +429,7 @@ export class RobotVision {
     const ctx = this.displayCtx;
     const w = this.width;
     const vh = Math.floor(this.height / 2);
-    if (!ctx || !this.displayVisible) return;
+    if (!ctx || (!this.displayVisible && !this.forceRender)) return;
 
     for (const d of this.detectedObjects) {
       const idStr = d.trackId !== undefined ? `#${d.trackId}` : '';
