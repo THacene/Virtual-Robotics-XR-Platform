@@ -142,7 +142,7 @@ export class VRUI {
     y += BTN_GAP;
     btns.push(
       { id: 'reset',  label: '🔄 RESET',   x: PAD, y, w: bw, h: BTN_H, color: C.btnReset,  view: 'main', action: () => this.cb.resetJoints() },
-      { id: 'switch', label: '🔀 SWITCH',  x: PAD + bw + 16, y, w: bw, h: BTN_H, color: C.btnSwitch, view: 'main', action: () => this.cb.switchRobot() },
+      { id: 'switch', label: '🤖 ROBOTS',  x: PAD + bw + 16, y, w: bw, h: BTN_H, color: C.btnSwitch, view: 'main', action: () => { this._view = 'robots'; } },
     );
     y += BTN_GAP;
     btns.push(
@@ -150,9 +150,10 @@ export class VRUI {
       { id: 'exit',  label: '🚪 EXIT VR',    x: PAD + bw + 16, y, w: bw, h: BTN_H, color: '#aa3333', view: 'main', action: () => { if (this.cb.exitXR) this.cb.exitXR(); } }
     );
 
-    // Stats view buttons
+    // Stats & Robots view back buttons
     btns.push(
-      { id: 'back', label: '◀ BACK', x: PAD, y: 76, w: 100, h: BTN_H, color: C.btnBg, view: 'stats', action: () => { this._view = 'main'; } }
+      { id: 'back_stats', label: '◀ BACK', x: PAD, y: 76, w: 100, h: BTN_H, color: C.btnBg, view: 'stats', action: () => { this._view = 'main'; } },
+      { id: 'back_robots', label: '◀ BACK', x: PAD, y: 76, w: 100, h: BTN_H, color: C.btnBg, view: 'robots', action: () => { this._view = 'main'; } }
     );
 
     return btns;
@@ -371,6 +372,22 @@ export class VRUI {
       return;
     }
 
+    // Check robots list
+    if (this._view === 'robots') {
+      const robots = this._statsData?.robots || [];
+      let ty = 140;
+      for (let i = 0; i < robots.length; i++) {
+        if (x >= PAD && x <= CW - PAD && y >= ty && y <= ty + 46) {
+          this._hoveredEl = 'robot_' + i;
+          if (triggerPressed && robots[i].isFree && !robots[i].isYours) {
+            if (this.cb.claimRobot) this.cb.claimRobot(i);
+            this._view = 'main';
+          }
+        }
+        ty += 56;
+      }
+    }
+
     // Check buttons
     for (const b of this._buttons) {
       if (b.view && b.view !== this._view) continue;
@@ -429,6 +446,8 @@ export class VRUI {
       this._drawTelemetry(ctx, active);
     } else if (this._view === 'stats') {
       this._drawStatistics(ctx);
+    } else if (this._view === 'robots') {
+      this._drawRobots(ctx);
     }
 
     // ── Buttons ──
@@ -646,6 +665,76 @@ export class VRUI {
     ctx.fillText('AVERAGE FORCE', PAD + 10, ty);
     ctx.textAlign = 'right';
     ctx.fillText(s.force, CW - PAD - 10, ty);
+  }
+
+  _drawRobots(ctx) {
+    const robots = this._statsData?.robots || [];
+    let ty = 140;
+
+    ctx.fillStyle = C.accent;
+    ctx.font = '14px "Share Tech Mono", monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('SELECT ROBOT', PAD + 10, ty);
+    
+    ctx.strokeStyle = 'rgba(255,204,0,0.15)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(PAD, ty + 8); ctx.lineTo(CW - PAD, ty + 8); ctx.stroke();
+
+    ty += 30;
+
+    const META = [
+      { name: 'Robot 1', type: 'Standard Arm',   color: '#4488BB' },
+      { name: 'Robot 2', type: 'ABB Industrial',  color: '#CC2936' },
+      { name: 'Robot 3', type: 'Fanuc Cobot',     color: '#E8B931' },
+      { name: 'Robot 4', type: 'Cobot',           color: '#44BBAA' },
+    ];
+
+    for (let i = 0; i < robots.length; i++) {
+      const st = robots[i];
+      const m = META[i] || { name: \`Robot \${i+1}\`, type: 'Unknown', color: '#888' };
+      
+      const isHovered = this._hoveredEl === 'robot_' + i;
+      
+      let bg = 'rgba(255,255,255,0.02)';
+      let border = 'rgba(255,255,255,0.06)';
+      let statusTxt = '🔒 IN USE';
+      let statusCol = '#cc4444';
+      
+      if (st.isYours) {
+        bg = 'rgba(0, 255, 136, 0.05)';
+        border = 'rgba(0, 255, 136, 0.40)';
+        statusTxt = '● YOURS';
+        statusCol = '#00cc66';
+      } else if (st.isFree) {
+        bg = isHovered ? 'rgba(255,204,0,0.06)' : 'rgba(255,255,255,0.02)';
+        border = isHovered ? 'rgba(255,204,0,0.30)' : 'rgba(255,255,255,0.06)';
+        statusTxt = '◎ FREE';
+        statusCol = '#00ff88';
+      }
+      
+      this._roundRect(PAD, ty, CW - PAD * 2, 46, 6, bg);
+      ctx.strokeStyle = border;
+      ctx.lineWidth = 1;
+      this._roundRectStroke(PAD, ty, CW - PAD * 2, 46, 6);
+      
+      this._roundRect(PAD + 14, ty + 16, 14, 14, 3, m.color);
+      
+      ctx.fillStyle = C.text;
+      ctx.font = 'bold 14px Rajdhani, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(m.name, PAD + 40, ty + 20);
+      
+      ctx.fillStyle = C.textDim;
+      ctx.font = '9px "Share Tech Mono", monospace';
+      ctx.fillText(m.type, PAD + 40, ty + 34);
+      
+      ctx.fillStyle = statusCol;
+      ctx.font = 'bold 10px "Share Tech Mono", monospace';
+      ctx.textAlign = 'right';
+      ctx.fillText(statusTxt, CW - PAD - 14, ty + 28);
+      
+      ty += 56;
+    }
   }
 
   // ─────────────────── Canvas helpers ───────────────────

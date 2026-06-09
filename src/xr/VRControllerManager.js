@@ -191,14 +191,16 @@ export class VRControllerManager {
     const turn  = Math.abs(lx) > DEAD_ZONE ? -lx * m.turn  : 0;
     this.cb.setDrive(speed, turn);
 
-    // ── X button (btn 4) → Base rotate − (held) ──
-    if (gp.buttons[4]?.pressed) {
-      this.cb.moveJoint('base', active.jCurrent.base - BASE_SPEED * dt);
+    // ── X button (btn 4) → Open Statistics ──
+    if (this._rising('left', 4, gp.buttons[4])) {
+      if (this.cb.openStatistics) this.cb.openStatistics();
+      this._haptic('left', 0.3, 40);
     }
 
-    // ── Y button (btn 5) → Base rotate + (held) ──
-    if (gp.buttons[5]?.pressed) {
-      this.cb.moveJoint('base', active.jCurrent.base + BASE_SPEED * dt);
+    // ── Y button (btn 5) → Open Robot Picker ──
+    if (this._rising('left', 5, gp.buttons[5])) {
+      if (this.cb.openRobotsList) this.cb.openRobotsList();
+      this._haptic('left', 0.3, 40);
     }
   }
 

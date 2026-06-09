@@ -803,6 +803,7 @@ renderer.setAnimationLoop(function mainLoop() {
       rTip: document.getElementById('tRTip')?.textContent || 'OFF',
       rMid: document.getElementById('tRMid')?.textContent || 'OFF',
       rBase: document.getElementById('tRBase')?.textContent || 'OFF',
+      robots: multiuser ? multiuser.getRobotStatuses() : []
     };
 
     _vrUI.update(dt, xrRay, xrTrigger, statsData);
@@ -989,6 +990,7 @@ function setupXRSystems() {
     },
     release:      () => actuateRelease(),
     switchRobot:  xrSwitchRobot,
+    claimRobot:   (idx) => { if (multiuser) multiuser.claimRobot(idx); },
     getActive:    () => getActive(),
     moveJoint:    (name, deg) => getActive().moveJoint(name, deg),
     setDrive:     (s, t) => {
@@ -1005,6 +1007,18 @@ function setupXRSystems() {
     },
     resetJoints:  xrResetJoints,
     toggleUI:     () => { if (_vrUI) _vrUI.toggle(); },
+    openStatistics: () => {
+      if (_vrUI) {
+        _vrUI.show();
+        _vrUI._view = 'stats';
+      }
+    },
+    openRobotsList: () => {
+      if (_vrUI) {
+        _vrUI.show();
+        _vrUI._view = 'robots';
+      }
+    },
     getGrabbed:   () => grabbed,
     getActiveIdx: () => activeIdx,
     getStatus: () => {
