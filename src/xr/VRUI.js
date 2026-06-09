@@ -146,13 +146,13 @@ export class VRUI {
     );
     y += BTN_GAP;
     btns.push(
-      { id: 'stats', label: '📊 STATISTICS', x: PAD, y, w: bw, h: BTN_H, color: C.btnReset, view: 'main', action: () => { this._view = 'stats'; } },
+      { id: 'camera', label: '📷 VISION', x: PAD, y, w: bw, h: BTN_H, color: C.btnReset, view: 'main', action: () => { this._view = 'camera'; } },
       { id: 'exit',  label: '🚪 EXIT VR',    x: PAD + bw + 16, y, w: bw, h: BTN_H, color: '#aa3333', view: 'main', action: () => { if (this.cb.exitXR) this.cb.exitXR(); } }
     );
 
     // Stats & Robots view back buttons
     btns.push(
-      { id: 'back_stats', label: '◀ BACK', x: PAD, y: 76, w: 100, h: BTN_H, color: C.btnBg, view: 'stats', action: () => { this._view = 'main'; } },
+      { id: 'back_camera', label: '◀ BACK', x: PAD, y: 76, w: 100, h: BTN_H, color: C.btnBg, view: 'camera', action: () => { this._view = 'main'; } },
       { id: 'back_robots', label: '◀ BACK', x: PAD, y: 76, w: 100, h: BTN_H, color: C.btnBg, view: 'robots', action: () => { this._view = 'main'; } }
     );
 
@@ -444,8 +444,8 @@ export class VRUI {
 
       // ── Telemetry section ──
       this._drawTelemetry(ctx, active);
-    } else if (this._view === 'stats') {
-      this._drawStatistics(ctx);
+    } else if (this._view === 'camera') {
+      this._drawCameraVision(ctx);
     } else if (this._view === 'robots') {
       this._drawRobots(ctx);
     }
@@ -598,73 +598,61 @@ export class VRUI {
     ctx.fillText('A: RESET · B: TOGGLE PANEL · SQUEEZE R: GRIP', CW / 2, ty + 42);
   }
 
-  _drawStatistics(ctx) {
-    const s = this._statsData || {};
+  _drawCameraVision(ctx) {
     let ty = 140;
 
     ctx.fillStyle = C.accent;
     ctx.font = '14px "Share Tech Mono", monospace';
     ctx.textAlign = 'left';
-    ctx.fillText('FULL STATISTICS', PAD + 10, ty);
+    ctx.fillText('ROBOT CAMERA VISION', PAD + 10, ty);
     
     ctx.strokeStyle = 'rgba(255,204,0,0.15)';
     ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(PAD, ty + 8); ctx.lineTo(CW - PAD, ty + 8); ctx.stroke();
 
     ty += 30;
-    
-    const drawRow = (lbl, val, col = C.text) => {
+
+    const s = this._statsData || {};
+    if (s.visionCanvas) {
+      // Draw the camera feed. VRUI width is CW=480, draw it as large as possible.
+      const w = CW - PAD * 2; // 440
+      const h = w * (s.visionCanvas.height / s.visionCanvas.width);
+      
+      ctx.drawImage(s.visionCanvas, PAD, ty, w, h);
+      
+      // Add industrial border
+      ctx.strokeStyle = 'rgba(77, 170, 255, 0.5)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(PAD, ty, w, h);
+      
+      // REC indicator (blinking)
+      if (Math.floor(Date.now() / 500) % 2 === 0) {
+        ctx.fillStyle = '#ff3333';
+        ctx.beginPath();
+        ctx.arc(PAD + 16, ty + 16, 4, 0, Math.PI*2);
+        ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 10px monospace';
+        ctx.textAlign = 'left';
+        ctx.fillText('REC', PAD + 24, ty + 20);
+      }
+      
+      // Crosshair
+      const cx = PAD + w / 2;
+      const cy = ty + h / 2;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(cx - 10, cy); ctx.lineTo(cx + 10, cy);
+      ctx.moveTo(cx, cy - 10); ctx.lineTo(cx, cy + 10);
+      ctx.stroke();
+
+    } else {
       ctx.fillStyle = C.textDim;
       ctx.font = '12px "Share Tech Mono", monospace';
-      ctx.textAlign = 'left';
-      ctx.fillText(lbl, PAD + 10, ty);
-      ctx.fillStyle = col;
-      ctx.textAlign = 'right';
-      ctx.fillText(val, CW - PAD - 10, ty);
-      ty += 20;
-    };
-
-    ctx.fillStyle = C.blue;
-    ctx.font = '12px "Share Tech Mono", monospace';
-    ctx.textAlign = 'left';
-    ctx.fillText('BOX POSITION', PAD + 10, ty);
-    ty += 20;
-    drawRow('X Axis', s.boxX, C.text);
-    drawRow('Y Axis', s.boxY, C.text);
-    drawRow('Z Axis', s.boxZ, C.text);
-    drawRow('Distance', s.boxDist, C.accent);
-    
-    ty += 10;
-    ctx.fillStyle = C.purple;
-    ctx.font = '12px "Share Tech Mono", monospace';
-    ctx.textAlign = 'left';
-    ctx.fillText('TCP POSITION', PAD + 10, ty);
-    ty += 20;
-    drawRow('X Axis', s.tcpX, C.text);
-    drawRow('Y Axis', s.tcpY, C.text);
-    drawRow('Z Axis', s.tcpZ, C.text);
-
-    ty += 10;
-    ctx.fillStyle = '#ff8833';
-    ctx.font = '12px "Share Tech Mono", monospace';
-    ctx.textAlign = 'left';
-    ctx.fillText('FINGER SENSORS', PAD + 10, ty);
-    ty += 20;
-    
-    drawRow('Left Tip', s.lTip, s.lTip !== 'OFF' ? C.green : C.textDim);
-    drawRow('Left Mid', s.lMid, s.lMid !== 'OFF' ? C.green : C.textDim);
-    drawRow('Left Base', s.lBase, s.lBase !== 'OFF' ? C.green : C.textDim);
-    drawRow('Right Tip', s.rTip, s.rTip !== 'OFF' ? C.green : C.textDim);
-    drawRow('Right Mid', s.rMid, s.rMid !== 'OFF' ? C.green : C.textDim);
-    drawRow('Right Base', s.rBase, s.rBase !== 'OFF' ? C.green : C.textDim);
-    
-    ty += 10;
-    ctx.fillStyle = C.accent;
-    ctx.font = '14px "Share Tech Mono", monospace';
-    ctx.textAlign = 'left';
-    ctx.fillText('AVERAGE FORCE', PAD + 10, ty);
-    ctx.textAlign = 'right';
-    ctx.fillText(s.force, CW - PAD - 10, ty);
+      ctx.textAlign = 'center';
+      ctx.fillText('CAMERA FEED UNAVAILABLE', CW / 2, ty + 100);
+    }
   }
 
   _drawRobots(ctx) {

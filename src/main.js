@@ -803,8 +803,14 @@ renderer.setAnimationLoop(function mainLoop() {
       rTip: document.getElementById('tRTip')?.textContent || 'OFF',
       rMid: document.getElementById('tRMid')?.textContent || 'OFF',
       rBase: document.getElementById('tRBase')?.textContent || 'OFF',
-      robots: multiuser ? multiuser.getRobotStatuses() : []
+      robots: multiuser ? multiuser.getRobotStatuses() : [],
+      visionCanvas: document.getElementById('cameraOverlay'),
     };
+    
+    // Force camera rendering if VRUI is displaying it
+    if (visionCtrl) {
+      visionCtrl.forceRender = (_vrUI._view === 'camera');
+    }
 
     _vrUI.update(dt, xrRay, xrTrigger, statsData);
   }
@@ -1007,10 +1013,10 @@ function setupXRSystems() {
     },
     resetJoints:  xrResetJoints,
     toggleUI:     () => { if (_vrUI) _vrUI.toggle(); },
-    openStatistics: () => {
+    openCameraVision: () => {
       if (_vrUI) {
         _vrUI.show();
-        _vrUI._view = 'stats';
+        _vrUI._view = 'camera';
       }
     },
     openRobotsList: () => {

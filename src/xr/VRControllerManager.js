@@ -191,9 +191,9 @@ export class VRControllerManager {
     const turn  = Math.abs(lx) > DEAD_ZONE ? -lx * m.turn  : 0;
     this.cb.setDrive(speed, turn);
 
-    // ── X button (btn 4) → Open Statistics ──
+    // ── X button (btn 4) → Open Camera Vision ──
     if (this._rising('left', 4, gp.buttons[4])) {
-      if (this.cb.openStatistics) this.cb.openStatistics();
+      if (this.cb.openCameraVision) this.cb.openCameraVision();
       this._haptic('left', 0.3, 40);
     }
 

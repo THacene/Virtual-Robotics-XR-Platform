@@ -269,8 +269,8 @@ export class RobotVision {
 
       this.renderer.readRenderTargetPixels(vc.rt, 0, 0, vw, vh, vc.pixelBuf);
 
-      // الرسم المرئي للمستخدم فقط عند فتح العرض (الكشف يستمر بالخلفية دائماً)
-      if (this.displayVisible && this.displayCtx) {
+      // الرسم المرئي للمستخدم فقط عند فتح العرض (الكشف يستمر بالخلفية دائماً) أو عند طلبه من الـ VR
+      if ((this.displayVisible || this.forceRender) && this.displayCtx) {
         const img = new ImageData(new Uint8ClampedArray(vc.pixelBuf), vw, vh);
         this._flipY(img);
         this.tempCtx.putImageData(img, 0, 0);
