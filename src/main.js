@@ -808,8 +808,8 @@ renderer.setAnimationLoop(function mainLoop() {
     };
     
     // Force camera rendering if VRUI is displaying it
-    if (visionCtrl) {
-      visionCtrl.forceRender = (_vrUI._view === 'camera');
+    if (typeof vision !== 'undefined' && vision) {
+      vision.forceRender = (_vrUI._view === 'camera');
     }
 
     _vrUI.update(dt, xrRay, xrTrigger, statsData);
