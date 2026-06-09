@@ -135,6 +135,83 @@ gB.addShape(new CANNON.Plane());
 gB.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
 world.addBody(gB);
 
+// ===== PLAYER PHYSICS (VR Head + Hands) =====
+const mPlayer = new CANNON.Material('player');
+world.addContactMaterial(new CANNON.ContactMaterial(mPlayer, mBox, {
+  friction: 0.4, restitution: 0.1,
+  contactEquationStiffness: 1e5, contactEquationRelaxation: 4
+}));
+world.addContactMaterial(new CANNON.ContactMaterial(mPlayer, mGnd, {
+  friction: 0.5, restitution: 0.0
+}));
+
+function makeKinematicSphere(radius) {
+  const b = new CANNON.Body({
+    mass: 0,
+    type: CANNON.Body.KINEMATIC,
+    material: mPlayer,
+    collisionFilterGroup: 2,
+    collisionFilterMask: -1,
+  });
+  b.addShape(new CANNON.Sphere(radius));
+  b.position.set(0, -10, 0); // start underground so it doesn't interfere before XR
+  return b;
+}
+
+const playerHeadBody  = makeKinematicSphere(0.15);
+const playerHandLBody = makeKinematicSphere(0.08);
+const playerHandRBody = makeKinematicSphere(0.08);
+let _playerBodiesInWorld = false;
+
+function addPlayerBodiesToWorld() {
+  if (_playerBodiesInWorld) return;
+  world.addBody(playerHeadBody);
+  world.addBody(playerHandLBody);
+  world.addBody(playerHandRBody);
+  _playerBodiesInWorld = true;
+}
+
+function removePlayerBodiesFromWorld() {
+  if (!_playerBodiesInWorld) return;
+  world.removeBody(playerHeadBody);
+  world.removeBody(playerHandLBody);
+  world.removeBody(playerHandRBody);
+  _playerBodiesInWorld = false;
+  // Reset positions underground
+  playerHeadBody.position.set(0, -10, 0);
+  playerHandLBody.position.set(0, -10, 0);
+  playerHandRBody.position.set(0, -10, 0);
+}
+
+const _tmpVec3 = new THREE.Vector3();
+
+function syncPlayerPhysics() {
+  if (!_xrSess || !_playerBodiesInWorld) return;
+
+  // Head → camera world position
+  camera.getWorldPosition(_tmpVec3);
+  playerHeadBody.position.set(_tmpVec3.x, _tmpVec3.y, _tmpVec3.z);
+  playerHeadBody.velocity.set(0, 0, 0);
+
+  // Right controller / hand
+  if (_vrCtrlMgr && _vrCtrlMgr.ctrlR) {
+    _vrCtrlMgr.ctrlR.getWorldPosition(_tmpVec3);
+    playerHandRBody.position.set(_tmpVec3.x, _tmpVec3.y, _tmpVec3.z);
+    playerHandRBody.velocity.set(0, 0, 0);
+  } else {
+    playerHandRBody.position.set(0, -10, 0);
+  }
+
+  // Left controller / hand
+  if (_vrCtrlMgr && _vrCtrlMgr.ctrlL) {
+    _vrCtrlMgr.ctrlL.getWorldPosition(_tmpVec3);
+    playerHandLBody.position.set(_tmpVec3.x, _tmpVec3.y, _tmpVec3.z);
+    playerHandLBody.velocity.set(0, 0, 0);
+  } else {
+    playerHandLBody.position.set(0, -10, 0);
+  }
+}
+
 // ===== FACTORY ENVIRONMENT =====
 const factoryGroup = buildFactory(scene, world, mGnd);
 
@@ -598,6 +675,9 @@ renderer.setAnimationLoop(function mainLoop() {
     _vrUI.update(dt, xrRay, xrTrigger);
   }
 
+  // ── Sync player physics bodies (head + hands) to XR positions ──
+  syncPlayerPhysics();
+
   let active = getActive();
   let activeStatus = { selfBlocked: null, floorBlocked: false, robotBlocked: false };
 
@@ -843,6 +923,7 @@ async function startXRSession(mode) {
     }
 
     setupXRSystems();
+    addPlayerBodiesToWorld();
     xrHideUI();
     _xrExit.style.display = 'block';
 
@@ -856,6 +937,7 @@ async function startXRSession(mode) {
         renderer.setClearAlpha(1); 
         if (factoryGroup) factoryGroup.visible = true;
       }
+      removePlayerBodiesFromWorld();
       cleanupXRSystems();
       xrShowUI();
       _xrExit.style.display = 'none';
