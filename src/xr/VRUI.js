@@ -61,6 +61,7 @@ export class VRUI {
 
     this._visible = false;
     this._tabActive = false;
+    this._view = 'main'; // 'main' or 'stats'
 
     // ── Canvas + Texture ──
     this._canvas = document.createElement('canvas');
@@ -135,18 +136,25 @@ export class VRUI {
     const bw = (CW - PAD * 2 - 16) / 2;
     let y = 400;
     const btns = [
-      { id: 'grab',    label: '✊ GRAB',    x: PAD, y, w: bw, h: BTN_H, color: C.btnGrab,    action: () => this.cb.grab() },
-      { id: 'release', label: '🤚 RELEASE', x: PAD + bw + 16, y, w: bw, h: BTN_H, color: C.btnRelease, action: () => this.cb.release() },
+      { id: 'grab',    label: '✊ GRAB',    x: PAD, y, w: bw, h: BTN_H, color: C.btnGrab,    view: 'main', action: () => this.cb.grab() },
+      { id: 'release', label: '🤚 RELEASE', x: PAD + bw + 16, y, w: bw, h: BTN_H, color: C.btnRelease, view: 'main', action: () => this.cb.release() },
     ];
     y += BTN_GAP;
     btns.push(
-      { id: 'reset',  label: '🔄 RESET',   x: PAD, y, w: bw, h: BTN_H, color: C.btnReset,  action: () => this.cb.resetJoints() },
-      { id: 'switch', label: '🔀 SWITCH',  x: PAD + bw + 16, y, w: bw, h: BTN_H, color: C.btnSwitch, action: () => this.cb.switchRobot() },
+      { id: 'reset',  label: '🔄 RESET',   x: PAD, y, w: bw, h: BTN_H, color: C.btnReset,  view: 'main', action: () => this.cb.resetJoints() },
+      { id: 'switch', label: '🔀 SWITCH',  x: PAD + bw + 16, y, w: bw, h: BTN_H, color: C.btnSwitch, view: 'main', action: () => this.cb.switchRobot() },
     );
     y += BTN_GAP;
     btns.push(
-      { id: 'exit', label: '🚪 EXIT VR/AR', x: PAD, y, w: CW - PAD * 2, h: BTN_H, color: '#aa3333', action: () => { if (this.cb.exitXR) this.cb.exitXR(); } }
+      { id: 'stats', label: '📊 STATISTICS', x: PAD, y, w: bw, h: BTN_H, color: C.btnReset, view: 'main', action: () => { this._view = 'stats'; } },
+      { id: 'exit',  label: '🚪 EXIT VR',    x: PAD + bw + 16, y, w: bw, h: BTN_H, color: '#aa3333', view: 'main', action: () => { if (this.cb.exitXR) this.cb.exitXR(); } }
     );
+
+    // Stats view buttons
+    btns.push(
+      { id: 'back', label: '◀ BACK', x: PAD, y: 76, w: 100, h: BTN_H, color: C.btnBg, view: 'stats', action: () => { this._view = 'main'; } }
+    );
+
     return btns;
   }
 
@@ -191,8 +199,11 @@ export class VRUI {
    * @param {{ origin: THREE.Vector3, direction: THREE.Vector3 }|null} ray
    *   — from VRControllerManager.getRay('right')
    * @param {boolean} triggerPressed — is right trigger pressed this frame
+   * @param {object} statsData — extracted telemetry data
    */
-  update(dt, ray, triggerPressed) {
+  update(dt, ray, triggerPressed, statsData = null) {
+    if (statsData) this._statsData = statsData;
+
     // ── Always process toggle tab (even when panel hidden) ──
     if (this._tabActive) {
       this._positionTab();
@@ -334,11 +345,13 @@ export class VRUI {
     const { x, y } = this._hoverUV;
 
     // Check sliders
-    for (const s of this._sliders) {
-      if (x >= s.x && x <= s.x + s.w && y >= s.y && y <= s.y + s.h) {
-        this._hoveredEl = s.id;
-        if (triggerPressed) {
-          this._dragging = s.id;
+    if (this._view === 'main') {
+      for (const s of this._sliders) {
+        if (x >= s.x && x <= s.x + s.w && y >= s.y && y <= s.y + s.h) {
+          this._hoveredEl = s.id;
+          if (triggerPressed) {
+            this._dragging = s.id;
+          }
         }
       }
     }
@@ -360,6 +373,7 @@ export class VRUI {
 
     // Check buttons
     for (const b of this._buttons) {
+      if (b.view && b.view !== this._view) continue;
       if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) {
         this._hoveredEl = b.id;
       }
@@ -394,29 +408,35 @@ export class VRUI {
     ctx.font = '11px "Share Tech Mono", monospace';
     ctx.fillText(`ROBOT ${(this.cb.getActiveIdx?.() ?? 0) + 1}  ·  ${this.cb.getGrabbed?.() ? 'GRIP ACTIVE' : 'STANDBY'}`, CW / 2, 60);
 
-    // ── Separator ──
-    ctx.strokeStyle = 'rgba(255,204,0,0.15)';
-    ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(PAD, 74); ctx.lineTo(CW - PAD, 74); ctx.stroke();
+    if (this._view === 'main') {
+      // ── Separator ──
+      ctx.strokeStyle = 'rgba(255,204,0,0.15)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(PAD, 74); ctx.lineTo(CW - PAD, 74); ctx.stroke();
 
-    // ── Mode indicator ──
-    ctx.fillStyle = C.textDim;
-    ctx.font = '10px "Share Tech Mono", monospace';
-    ctx.textAlign = 'left';
-    ctx.fillText('JOINT  SLIDERS', PAD + 10, 96);
+      // ── Mode indicator ──
+      ctx.fillStyle = C.textDim;
+      ctx.font = '10px "Share Tech Mono", monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText('JOINT  SLIDERS', PAD + 10, 96);
 
-    // ── Sliders ──
-    for (const s of this._sliders) {
-      this._drawSlider(ctx, s, active);
+      // ── Sliders ──
+      for (const s of this._sliders) {
+        this._drawSlider(ctx, s, active);
+      }
+
+      // ── Telemetry section ──
+      this._drawTelemetry(ctx, active);
+    } else if (this._view === 'stats') {
+      this._drawStatistics(ctx);
     }
 
     // ── Buttons ──
     for (const b of this._buttons) {
-      this._drawButton(ctx, b);
+      if (b.view === this._view) {
+        this._drawButton(ctx, b);
+      }
     }
-
-    // ── Telemetry section ──
-    this._drawTelemetry(ctx, active);
 
     // ── Cursor dot ──
     if (this._hoverUV) {
@@ -557,6 +577,75 @@ export class VRUI {
     ctx.font = '9px "Share Tech Mono", monospace';
     ctx.fillText('R-STICK: JOINTS · L-STICK: DRIVE · CLICK STICK: MODE', CW / 2, ty + 28);
     ctx.fillText('A: RESET · B: TOGGLE PANEL · SQUEEZE R: GRIP', CW / 2, ty + 42);
+  }
+
+  _drawStatistics(ctx) {
+    const s = this._statsData || {};
+    let ty = 140;
+
+    ctx.fillStyle = C.accent;
+    ctx.font = '14px "Share Tech Mono", monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('FULL STATISTICS', PAD + 10, ty);
+    
+    ctx.strokeStyle = 'rgba(255,204,0,0.15)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(PAD, ty + 8); ctx.lineTo(CW - PAD, ty + 8); ctx.stroke();
+
+    ty += 30;
+    
+    const drawRow = (lbl, val, col = C.text) => {
+      ctx.fillStyle = C.textDim;
+      ctx.font = '12px "Share Tech Mono", monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText(lbl, PAD + 10, ty);
+      ctx.fillStyle = col;
+      ctx.textAlign = 'right';
+      ctx.fillText(val, CW - PAD - 10, ty);
+      ty += 20;
+    };
+
+    ctx.fillStyle = C.blue;
+    ctx.font = '12px "Share Tech Mono", monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('BOX POSITION', PAD + 10, ty);
+    ty += 20;
+    drawRow('X Axis', s.boxX, C.text);
+    drawRow('Y Axis', s.boxY, C.text);
+    drawRow('Z Axis', s.boxZ, C.text);
+    drawRow('Distance', s.boxDist, C.accent);
+    
+    ty += 10;
+    ctx.fillStyle = C.purple;
+    ctx.font = '12px "Share Tech Mono", monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('TCP POSITION', PAD + 10, ty);
+    ty += 20;
+    drawRow('X Axis', s.tcpX, C.text);
+    drawRow('Y Axis', s.tcpY, C.text);
+    drawRow('Z Axis', s.tcpZ, C.text);
+
+    ty += 10;
+    ctx.fillStyle = '#ff8833';
+    ctx.font = '12px "Share Tech Mono", monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('FINGER SENSORS', PAD + 10, ty);
+    ty += 20;
+    
+    drawRow('Left Tip', s.lTip, s.lTip !== 'OFF' ? C.green : C.textDim);
+    drawRow('Left Mid', s.lMid, s.lMid !== 'OFF' ? C.green : C.textDim);
+    drawRow('Left Base', s.lBase, s.lBase !== 'OFF' ? C.green : C.textDim);
+    drawRow('Right Tip', s.rTip, s.rTip !== 'OFF' ? C.green : C.textDim);
+    drawRow('Right Mid', s.rMid, s.rMid !== 'OFF' ? C.green : C.textDim);
+    drawRow('Right Base', s.rBase, s.rBase !== 'OFF' ? C.green : C.textDim);
+    
+    ty += 10;
+    ctx.fillStyle = C.accent;
+    ctx.font = '14px "Share Tech Mono", monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('AVERAGE FORCE', PAD + 10, ty);
+    ctx.textAlign = 'right';
+    ctx.fillText(s.force, CW - PAD - 10, ty);
   }
 
   // ─────────────────── Canvas helpers ───────────────────

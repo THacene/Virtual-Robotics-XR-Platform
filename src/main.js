@@ -786,7 +786,26 @@ renderer.setAnimationLoop(function mainLoop() {
   if (_vrUI) {
     const xrRay = _vrCtrlMgr ? _vrCtrlMgr.getRay('right') : null;
     const xrTrigger = _vrCtrlMgr?.srcR?.gamepad?.buttons[0]?.pressed ?? false;
-    _vrUI.update(dt, xrRay, xrTrigger);
+
+    // Read stats from DOM (populated by telemetry.js)
+    const statsData = {
+      boxX: document.getElementById('tBoxX')?.textContent || '—',
+      boxY: document.getElementById('tBoxY')?.textContent || '—',
+      boxZ: document.getElementById('tBoxZ')?.textContent || '—',
+      boxDist: document.getElementById('tBoxDist')?.textContent || '—',
+      tcpX: document.getElementById('tTcpX')?.textContent || '—',
+      tcpY: document.getElementById('tTcpY')?.textContent || '—',
+      tcpZ: document.getElementById('tTcpZ')?.textContent || '—',
+      force: document.getElementById('tForceVal')?.textContent || '0%',
+      lTip: document.getElementById('tLTip')?.textContent || 'OFF',
+      lMid: document.getElementById('tLMid')?.textContent || 'OFF',
+      lBase: document.getElementById('tLBase')?.textContent || 'OFF',
+      rTip: document.getElementById('tRTip')?.textContent || 'OFF',
+      rMid: document.getElementById('tRMid')?.textContent || 'OFF',
+      rBase: document.getElementById('tRBase')?.textContent || 'OFF',
+    };
+
+    _vrUI.update(dt, xrRay, xrTrigger, statsData);
   }
 
   // ── Sync player physics bodies (head + hands) to XR positions ──
