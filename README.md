@@ -7,6 +7,9 @@ A WebXR-powered robotic arm factory simulation with 4-DOF manipulators, physics-
 ![Factory](screenshots/factory.PNG)
 ![Robot](screenshots/robot.PNG)
 ![Vision Camera](screenshots/vision%20camera.PNG)
+![VR Control](screenshots/vr%20control.PNG)
+![VR Control 2](screenshots/vr%20control%202.PNG)
+![VR Control 3](screenshots/vr%20control%203.PNG)
 
 ## Features
 
@@ -59,6 +62,10 @@ A WebXR-powered robotic arm factory simulation with 4-DOF manipulators, physics-
 - WebXR immersive mode buttons
 - VR and AR session support
 - Status indicators for XR availability
+- **Advanced VR Interaction System:**
+  - 🎮 **VR Controllers**: Thumbstick mapping for base movement and joint control, trigger for raycast interaction and grabbing, squeeze for analog gripper control.
+  - 🖐️ **Hand Tracking**: Pinch gestures for raycast interaction/grabbing, fist/open hand for gripper control, and thumbs up to switch robots.
+  - 🖥️ **VR 3D UI**: Floating interactive canvas panel with sliders, buttons, and live telemetry data. Fully operable via raycast or pinch.
 
 ### 3D Factory Environment
 - **60 × 60 × 12 m** industrial scene
@@ -122,6 +129,10 @@ openssl req -x509 -newkey rsa:2048 -keyout server-key.pem -out server.pem -days 
 │       └── style.css           # Application stylesheet
 └── src/
     ├── main.js                 # Application bootstrap
+    ├── xr/
+    │   ├── VRControllerManager.js  # VR physical controllers support
+    │   ├── HandTrackingController.js # VR hand tracking and gestures
+    │   └── VRUI.js                 # Floating 3D VR UI panel
     ├── core/
     │   ├── Robot.js            # Robot controller
     │   ├── Robot3D.js          # 3D visual representation
@@ -158,6 +169,7 @@ openssl req -x509 -newkey rsa:2048 -keyout server-key.pem -out server.pem -days 
 ```
 index.html
   └── src/main.js
+       ├── xr/ ──────────────────── WebXR Interaction (Controllers, Hand Tracking, UI)
        ├── Robot.js ─────────────── robot control (joints, IK, motion)
        │    └── Robot3D.js ──────── 3D rendering + physics body
        │         ├── createRobot.js

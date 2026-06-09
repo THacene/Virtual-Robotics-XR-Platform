@@ -37,10 +37,11 @@
     const desc = ar.description;
     const baseOffY = ar.parts.constants.BASE_OFF;
     const l1 = desc.arm.shoulder.len;
-    const palmH = desc.arm.palm?.h ?? 0.25;
-    const wristToPalmFront = 0.1 + palmH * 1.2;
+    const palmD = desc.arm.palm?.d ?? 0.26;
+    const fingerD = desc.finger?.d ?? 0.18;
+    const frontDepth = Math.max(palmD, fingerD) / 2;
     const boxHalf = coords.half ?? desc.box?.half ?? 0.25;
-    const approachOff = boxHalf + wristToPalmFront + 0.04;
+    const approachOff = boxHalf + frontDepth + 0.04;
 
     const wristH = desc.arm.wrist?.h ?? 0;
     const l2 = desc.arm.elbow.len + wristH + 0.06;
@@ -227,7 +228,7 @@
 
         const basePrefDist = clamp(angles.maxReach + angles.approachOff - 0.3,
           2.6, angles.maxReach + angles.approachOff);
-        const prefDist = Math.max(1.2, basePrefDist - this._distReduction);
+        const prefDist = Math.max(1.0, basePrefDist - this._distReduction);
 
         const fwdErr = target.forward - prefDist;
         const aligned = Math.abs(yawErr) < 0.22;
@@ -237,11 +238,11 @@
           const ratio = clamp(fwdErr / 0.25, 0.15, 1);
           speed = clamp(fwdErr * 0.55 * ratio, 0.015, mv.speed * 0.45);
         }
-        const turn = Math.abs(yawErr) < 0.04
+        let turn = Math.abs(yawErr) < 0.04
           ? 0 : clamp(yawErr * 1.8, -mv.turn, mv.turn);
 
         // ── Stop base drive once arm is deployed in approach ──
-        if (this._phase === 'approach' && fwdErr < 0.10) {
+        if (this._phase === 'approach') {
           speed = 0;
           turn = 0;
         }
@@ -249,7 +250,7 @@
         ar.setDrive(speed, turn);
 
         const canDeploy =
-          target.forward <= prefDist + 0.22 &&
+          target.forward <= prefDist + 0.35 &&
           Math.abs(yawErr) <= 0.32 &&
           Math.abs(target.side) <= (coords.half ?? 0.25) + 0.22;
 
@@ -525,12 +526,22 @@
         if (!coords || !ar?.parts) return false;
         const palmG = ar.parts.palm.group;
 
-        const localBox = ar.parts.base.group.position.clone().set(coords.x, coords.y, coords.z);
-        palmG.worldToLocal(localBox);
+        const palmWP = palmG.getWorldPosition(ar.parts.base.group.position.clone().set(0, 0, 0));
+        const palmWQ = palmG.getWorldQuaternion(ar.parts.base.group.quaternion.clone().set(0, 0, 0, 1));
 
-        const lx = localBox.x;
-        const ly = localBox.y;
-        const lz = localBox.z;
+        const bx = coords.x - palmWP.x;
+        const by = coords.y - palmWP.y;
+        const bz = coords.z - palmWP.z;
+
+        const qx = -palmWQ.x, qy = -palmWQ.y, qz = -palmWQ.z, qw = palmWQ.w;
+        // q * v * q^-1 (quaternion rotation)
+        const ix = qw * bx + qy * bz - qz * by;
+        const iy = qw * by + qz * bx - qx * bz;
+        const iz = qw * bz + qx * by - qy * bx;
+        const iw = -qx * bx - qy * by - qz * bz;
+        const lx = ix * qw + iw * (-qx) + iy * (-qz) - iz * (-qy);
+        const ly = iy * qw + iw * (-qy) + iz * (-qx) - ix * (-qz);
+        const lz = iz * qw + iw * (-qz) + ix * (-qy) - iy * (-qx);
 
         const boxHalf = coords.half ?? ar.description.box?.half ?? 0.25;
         const fingerX = ar.parts.fingers.right.group.position.x;
@@ -539,21 +550,11 @@
         const fh = ar.FH ?? ar.parts.constants?.FH ?? 0.6;
         const fd = ar.FD ?? ar.parts.constants?.FD ?? 0.18;
 
-        const isGrip = (
+        return (
           Math.abs(lx) < (innerX + boxHalf + 0.05) &&
-          ly > -0.1 && ly < (fh + boxHalf + 0.15) &&
-          Math.abs(lz) < (fd / 2 + boxHalf + 0.15)
+          Math.abs(ly) < (fh / 2 + boxHalf + 0.05) &&
+          Math.abs(lz) < (fd / 2 + boxHalf + 0.05)
         );
-
-        // Debug logging (throttled)
-        if (!this._lastGeoLog || performance.now() - this._lastGeoLog > 500) {
-          if (this._phase === 'approach') {
-            console.log(`[PickPlace geoContact] lx:${lx.toFixed(3)} ly:${ly.toFixed(3)} lz:${lz.toFixed(3)} | isGrip: ${isGrip}`);
-          }
-          this._lastGeoLog = performance.now();
-        }
-
-        return isGrip;
       }
 
       // ══════════════════════════════════════

@@ -7,7 +7,7 @@ export const defaultDescription = {
 
   // ⬇️ أبعاد واقعية: ذراع أقصر وأكثر تناسقاً (مثل روبوت صناعي حقيقي ~1.1m + 0.95m)
   arm: {
-    shoulder: { len: 1.1,  w: 0.26, physHalfW: 0.13, physHalfH: 0.55, physHalfD: 0.13, color: 0xF7931E, mass: 20.0 }, // KUKA Orange
+    shoulder: { len: 1.5,  w: 0.26, physHalfW: 0.13, physHalfH: 0.55, physHalfD: 0.13, color: 0xF7931E, mass: 20.0 }, // KUKA Orange
     elbow:    { len: 0.95, w: 0.22, physHalfW: 0.11, physHalfH: 0.475, physHalfD: 0.11, color: 0xE8820A, mass: 15.0 }, // Deeper KUKA Orange
     wrist:    { r: 0.12,   h: 0.12, color: 0x8C939A, mass: 4.0 }, // Brushed steel
     palm:     { w: 0.42,   h: 0.08, d: 0.24, physHalfW: 0.21, physHalfH: 0.04, physHalfD: 0.12, color: 0x6B7280, mass: 3.0 }, // Warm gunmetal

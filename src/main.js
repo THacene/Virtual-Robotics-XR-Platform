@@ -13,6 +13,9 @@ import { smartGripUpdate } from './logic/gripLogic.js';
 import { log } from './ui/log.js';
 import { MultiuserSync } from './core/MultiuserSync.js';
 import { RobotVision } from './vision/RobotVision.js';
+import { VRControllerManager } from './xr/VRControllerManager.js';
+import { VRUI } from './xr/VRUI.js';
+import { HandTrackingController } from './xr/HandTrackingController.js';
 
 const BH = 0.25;
 
@@ -40,6 +43,9 @@ xrRig.add(camera);
 let _xrSess = null;
 let _xrCtrlR = null;
 let _xrCtrlL = null;
+let _vrCtrlMgr = null;
+let _vrUI = null;
+let _handTracker = null;
 
 const CAM = {
   theta: 0.72, phi: 0.85, radius: 10,
@@ -292,9 +298,14 @@ const robots = [robot1, robot2, robot3, cobot];
 let activeIdx = 0;
 const getActive = () => robots[activeIdx];
 
+
 // ===== KEYBOARD =====
 const moveKeys = {};
-document.addEventListener('keydown', e => { moveKeys[e.code] = true; });
+document.addEventListener('keydown', e => {
+  moveKeys[e.code] = true;
+  // V key = toggle VR UI panel (works during XR for emulator testing)
+  if (e.code === 'KeyV' && _vrUI) { _vrUI.toggle(); }
+});
 document.addEventListener('keyup', e => { moveKeys[e.code] = false; });
 
 document.addEventListener('keydown', e => {
@@ -355,6 +366,7 @@ function applyKeyboardToActive() {
 
 function applyThumbstickToActive() {
   if (!_xrSess) return;
+  if (_vrCtrlMgr) return;  // VRControllerManager handles XR input
   const gamepads = navigator.getGamepads ? [...navigator.getGamepads()] : [];
   const gp = gamepads.find(g => g && g.axes.length >= 4);
   if (!gp) return;
@@ -577,6 +589,15 @@ renderer.setAnimationLoop(function mainLoop() {
   applyKeyboardToActive();
   applyThumbstickToActive();
 
+  // ── VR XR Systems update ──
+  if (_vrCtrlMgr) _vrCtrlMgr.update(dt);
+  if (_handTracker) _handTracker.update(dt);
+  if (_vrUI) {
+    const xrRay = _vrCtrlMgr ? _vrCtrlMgr.getRay('right') : null;
+    const xrTrigger = _vrCtrlMgr?.srcR?.gamepad?.buttons[0]?.pressed ?? false;
+    _vrUI.update(dt, xrRay, xrTrigger);
+  }
+
   let active = getActive();
   let activeStatus = { selfBlocked: null, floorBlocked: false, robotBlocked: false };
 
@@ -726,29 +747,82 @@ renderer.setAnimationLoop(function mainLoop() {
 });
 
 // ===== XR CONTROLLERS + SESSION =====
-function setupXRControllers() {
-  _xrCtrlR = renderer.xr.getController(0);
-  _xrCtrlL = renderer.xr.getController(1);
 
-  // Trigger يمين = Grab / Release
-  _xrCtrlR.addEventListener('selectstart', () => actuateGrab());
-  _xrCtrlR.addEventListener('selectend', () => actuateRelease());
+// ── XR helper: switch robot (shared by controllers + hand tracking) ──
+function xrSwitchRobot() {
+  if (muMode) { multiuser.claimNextRobot(); return; }
+  if (grabbed) actuateRelease();
+  const prev = getActive(); prev.setDrive(0, 0);
+  if (!grabbed) prev.setSqueeze(0);
+  activeIdx = (activeIdx + 1) % robots.length;
+  robotApi.setRobot3D(getActive()); syncSlidersToActive(); updateActiveBadge();
+  if (_handTracker) _handTracker.resetReference();
+}
 
-  // Squeeze يسار = Switch robot
-  _xrCtrlL.addEventListener('squeezestart', () => {
-    if (muMode) {
-      multiuser.claimNextRobot();
-      return;
-    }
-    if (grabbed) actuateRelease();
-    const prev = getActive(); prev.setDrive(0, 0);
-    if (!grabbed) prev.setSqueeze(0);
-    activeIdx = (activeIdx + 1) % robots.length;
-    robotApi.setRobot3D(getActive()); syncSlidersToActive(); updateActiveBadge();
-  });
+// ── XR helper: reset all joints to 0 ──
+function xrResetJoints() {
+  const a = getActive();
+  a.moveJoint('base', 0); a.moveJoint('shoulder', 0);
+  a.moveJoint('elbow', 0); a.moveJoint('wrist', 0);
+}
 
-  xrRig.add(_xrCtrlR);
-  xrRig.add(_xrCtrlL);
+// ── Setup all VR interaction systems ──
+function setupXRSystems() {
+  const xrCb = {
+    grab: () => {
+      // Skip grab when interacting with VR UI
+      if (_vrUI && _vrUI.visible && _vrUI._hoveredEl) return;
+      actuateGrab();
+    },
+    release:      () => actuateRelease(),
+    switchRobot:  xrSwitchRobot,
+    getActive:    () => getActive(),
+    moveJoint:    (name, deg) => getActive().moveJoint(name, deg),
+    setDrive:     (s, t) => {
+      const active = getActive(); active.setDrive(s, t);
+      for (const r of robots) if (r !== active) r.setDrive(0, 0);
+    },
+    setSqueeze: (v) => {
+      const a = getActive();
+      const clamped = Math.max(0, Math.min(1, v));
+      a.setSqueeze(clamped);
+      // Map squeeze (0=open, 1=closed) → FOPEN range (0.55→0.14)
+      const openMM = 55 - clamped * (55 - 14);
+      a.setOpen(openMM / 100);
+    },
+    resetJoints:  xrResetJoints,
+    toggleUI:     () => { if (_vrUI) _vrUI.toggle(); },
+    getGrabbed:   () => grabbed,
+    getActiveIdx: () => activeIdx,
+    getStatus: () => {
+      if (grabbed) return 'GRIP ACTIVE';
+      if (isBoxBetweenFingers(robotApi)) return 'READY';
+      return 'STANDBY';
+    },
+  };
+
+  // 1) VR Controller Manager
+  _vrCtrlMgr = new VRControllerManager(renderer, xrRig, scene, xrCb);
+  _vrCtrlMgr.setup();
+
+  // 2) VR UI Panel (positioned to the LEFT — won't block view)
+  _vrUI = new VRUI(scene, xrRig, xrCb);
+  _vrUI.activate();
+  _vrUI.show();  // Auto-show — panel is on the left side now
+
+  // 3) Hand Tracking (auto-activates when hands are detected)
+  _handTracker = new HandTrackingController(renderer, xrRig, scene, xrCb);
+  _handTracker.setup();
+
+  console.log('[XR] All VR systems initialised: Controllers ✓ | UI ✓ | HandTracking ✓');
+}
+
+// ── Cleanup all VR systems ──
+function cleanupXRSystems() {
+  if (_vrCtrlMgr)   { _vrCtrlMgr.dispose();   _vrCtrlMgr = null; }
+  if (_vrUI)        { _vrUI.dispose();        _vrUI = null; }
+  if (_handTracker) { _handTracker.dispose(); _handTracker = null; }
+  _xrCtrlR = null; _xrCtrlL = null;
 }
 
 async function startXRSession(mode) {
@@ -763,7 +837,7 @@ async function startXRSession(mode) {
 
     if (mode === 'immersive-ar') { scene.background = null; renderer.setClearAlpha(0); }
 
-    setupXRControllers();
+    setupXRSystems();
     xrHideUI();
     _xrExit.style.display = 'block';
 
@@ -773,8 +847,7 @@ async function startXRSession(mode) {
     session.addEventListener('end', () => {
       _xrSess = null;
       if (mode === 'immersive-ar') { scene.background = new THREE.Color(0x8a9aaa); renderer.setClearAlpha(1); }
-      if (_xrCtrlR) { xrRig.remove(_xrCtrlR); _xrCtrlR = null; }
-      if (_xrCtrlL) { xrRig.remove(_xrCtrlL); _xrCtrlL = null; }
+      cleanupXRSystems();
       xrShowUI();
       _xrExit.style.display = 'none';
       if (statEl) { statEl.textContent = 'AVAILABLE'; statEl.style.color = '#00cc55'; }
@@ -1000,4 +1073,4 @@ window.addEventListener('resize', () => {
 });
 
 document.addEventListener('keydown', e => { if (e.key === 'r') actuateRelease(); });
-document.addEventListener('keydown', e => { if (e.key === 'r') actuateRelease(); });
+
