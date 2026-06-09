@@ -171,6 +171,8 @@ export class RobotVision {
     if (this._allCamDefs.length === 0 && robots) this._initAllCamDefs(robots);
 
     const prev = this.renderer.getRenderTarget();
+    const xrEnabled = this.renderer.xr.enabled;
+    this.renderer.xr.enabled = false;
     const ctx = this._allCtx;
     const cv = this._allCanvas;
     const num = robots.length;
@@ -245,6 +247,7 @@ export class RobotVision {
       ctx.beginPath(); ctx.moveTo(cx + cellW - blen, cy + cellH); ctx.lineTo(cx + cellW, cy + cellH); ctx.lineTo(cx + cellW, cy + cellH - blen); ctx.stroke();
     }
 
+    this.renderer.xr.enabled = xrEnabled;
     this.renderer.setRenderTarget(prev);
 
     const det = document.getElementById('allCamRobots');
@@ -257,6 +260,8 @@ export class RobotVision {
     if (!this.active) return;
     this._activeRobot = activeRobot;
     const prev = this.renderer.getRenderTarget();
+    const xrEnabled = this.renderer.xr.enabled;
+    this.renderer.xr.enabled = false;
     const vw = this.width;
     const vh = Math.floor(this.height / 2);
     const allDetections = [];
@@ -281,6 +286,7 @@ export class RobotVision {
       allDetections.push(...dets);
     }
 
+    this.renderer.xr.enabled = xrEnabled;
     this.renderer.setRenderTarget(prev);
 
     const seen = new Set();
