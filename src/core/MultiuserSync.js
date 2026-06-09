@@ -49,6 +49,10 @@ export class MultiuserSync {
     switch (msg.type) {
       case 'mu_assigned':
         this.clientId = msg.clientId;
+        // Clear old robot from owners before switching
+        if (this.robotIndex !== undefined && this.robotIndex !== msg.robotIndex) {
+          this.owners.delete(this.robotIndex);
+        }
         this.robotIndex = msg.robotIndex;
         this.owners.set(msg.robotIndex, msg.clientId);
         this.onReady?.(msg.robotIndex);
@@ -170,6 +174,35 @@ export class MultiuserSync {
       nextIdx = (nextIdx + 1) % numRobots;
     }
     console.log("No free robots available to switch to.");
+  }
+
+  /** Claim a specific robot by index */
+  claimRobot(idx) {
+    if (!this.connected || !this.clientId) return false;
+    if (idx < 0 || idx >= this.robots.length) return false;
+    if (idx === this.robotIndex) return false; // already yours
+    if (this.owners.has(idx) && this.owners.get(idx) !== this.clientId) return false; // owned by someone else
+    this.ws.send(JSON.stringify({
+      type: 'mu_claim',
+      clientId: this.clientId,
+      robotIndex: idx
+    }));
+    return true;
+  }
+
+  /** Return status info for each robot: {index, isFree, isYours, ownerClientId} */
+  getRobotStatuses() {
+    const result = [];
+    for (let i = 0; i < this.robots.length; i++) {
+      const owner = this.owners.get(i) ?? null;
+      result.push({
+        index: i,
+        isFree: !owner,
+        isYours: i === this.robotIndex,
+        ownerClientId: owner,
+      });
+    }
+    return result;
   }
 
   getState(robot) {

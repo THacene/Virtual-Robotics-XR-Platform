@@ -130,12 +130,15 @@ wss.on('connection', function(ws, req) {
     if (message.type === 'mu_claim') {
       const targetRi = message.robotIndex;
       if (targetRi !== undefined && !muRobotOwners[targetRi]) {
-        // Release current robot
-        muReleaseRobot(clientId);
+        // Release current robot and broadcast its release
+        const oldRi = muReleaseRobot(clientId);
+        if (oldRi >= 0) {
+          muBroadcast({ type: 'mu_release', clientId, robotIndex: oldRi }, null);
+        }
         // Claim new robot
         muRobotOwners[targetRi] = clientId;
         muClients[clientId].robotIndex = targetRi;
-        log(`[MU] ${clientId} claimed robot ${targetRi}`);
+        log(`[MU] ${clientId} claimed robot ${targetRi} (released ${oldRi})`);
         ws.send(JSON.stringify({ type: 'mu_assigned', clientId, robotIndex: targetRi, totalRobots: TOTAL_ROBOTS }));
         muBroadcast({ type: 'mu_join', clientId, robotIndex: targetRi }, null);
       }

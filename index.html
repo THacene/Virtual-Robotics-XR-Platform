@@ -374,6 +374,190 @@
       color: var(--txt-dim); text-transform: uppercase; font-family: var(--f-mono);
     }
 
+    /* ── ROBOT PICKER POPUP ── */
+    #robotPickerOverlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      z-index: 5000;
+      background: rgba(0, 0, 0, 0.55);
+      backdrop-filter: blur(6px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      animation: rpFadeIn 0.18s ease;
+    }
+    #robotPickerOverlay.visible { display: flex; }
+
+    @keyframes rpFadeIn {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+    @keyframes rpSlideIn {
+      from { transform: translateY(18px) scale(0.96); opacity: 0; }
+      to   { transform: translateY(0) scale(1); opacity: 1; }
+    }
+
+    #robotPickerPanel {
+      min-width: 320px;
+      max-width: 420px;
+      background: rgba(12, 16, 24, 0.95);
+      border: 1px solid rgba(255, 204, 0, 0.35);
+      border-radius: 6px;
+      backdrop-filter: blur(24px);
+      box-shadow: 0 12px 48px rgba(0, 0, 0, 0.7), 0 0 1px rgba(255,204,0,0.3);
+      animation: rpSlideIn 0.22s ease;
+      overflow: hidden;
+    }
+
+    #robotPickerHeader {
+      padding: 12px 16px 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid rgba(255, 204, 0, 0.22);
+      background: rgba(10, 12, 18, 0.7);
+    }
+    #robotPickerHeader::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--c-yellow), transparent);
+      opacity: 0.5;
+    }
+
+    .rp-title {
+      font-family: var(--f-mono);
+      font-size: 11px;
+      letter-spacing: 3px;
+      color: var(--c-yellow);
+      text-transform: uppercase;
+      font-weight: 700;
+    }
+    .rp-hint {
+      font-family: var(--f-mono);
+      font-size: 8px;
+      letter-spacing: 1px;
+      color: var(--txt-dim);
+    }
+
+    #robotPickerBody {
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .rp-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 14px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.02);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .rp-item:hover:not(.rp-locked):not(.rp-current) {
+      background: rgba(255, 204, 0, 0.06);
+      border-color: rgba(255, 204, 0, 0.30);
+      transform: translateX(4px);
+    }
+    .rp-item.rp-current {
+      border-color: rgba(0, 255, 136, 0.40);
+      background: rgba(0, 255, 136, 0.05);
+      cursor: default;
+    }
+    .rp-item.rp-locked {
+      opacity: 0.40;
+      cursor: not-allowed;
+    }
+    .rp-item.rp-locked:hover {
+      background: rgba(204, 51, 34, 0.04);
+    }
+
+    .rp-color-dot {
+      width: 14px; height: 14px;
+      border-radius: 3px;
+      border: 1px solid rgba(255,255,255,0.15);
+      flex-shrink: 0;
+    }
+    .rp-info {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .rp-name {
+      font-family: var(--f-ui);
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--txt);
+      letter-spacing: 1px;
+    }
+    .rp-type {
+      font-family: var(--f-mono);
+      font-size: 8px;
+      letter-spacing: 2px;
+      color: var(--txt-dim);
+      text-transform: uppercase;
+    }
+    .rp-status {
+      font-family: var(--f-mono);
+      font-size: 9px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      flex-shrink: 0;
+      padding: 3px 8px;
+      border-radius: 3px;
+      border: 1px solid transparent;
+    }
+    .rp-status.free {
+      color: #00ff88;
+      border-color: rgba(0, 255, 136, 0.25);
+      background: rgba(0, 255, 136, 0.06);
+    }
+    .rp-status.yours {
+      color: #00cc66;
+      border-color: rgba(0, 204, 102, 0.30);
+      background: rgba(0, 204, 102, 0.08);
+    }
+    .rp-status.locked {
+      color: #cc4444;
+      border-color: rgba(204, 68, 68, 0.25);
+      background: rgba(204, 68, 68, 0.06);
+    }
+
+    .rp-key-hint {
+      position: absolute;
+      top: 50%; right: 14px;
+      transform: translateY(-50%);
+      font-family: var(--f-mono);
+      font-size: 9px;
+      color: rgba(255,204,0,0.4);
+      letter-spacing: 1px;
+      display: none;
+    }
+    .rp-item:hover:not(.rp-locked):not(.rp-current) .rp-key-hint {
+      display: block;
+    }
+
+    #robotPickerFooter {
+      padding: 8px 16px;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      text-align: center;
+    }
+    .rp-footer-text {
+      font-family: var(--f-mono);
+      font-size: 8px;
+      letter-spacing: 2px;
+      color: var(--txt-dim);
+      text-transform: uppercase;
+    }
+
   </style>
 </head>
 <body>
@@ -493,6 +677,22 @@
       <div id="allCamInfo">
         <span id="allCamRobots">Robots: 0</span>
         <span id="allCamDetections">Detections: 0</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════ ROBOT PICKER POPUP ══════════════════ -->
+  <div id="robotPickerOverlay">
+    <div id="robotPickerPanel">
+      <div id="robotPickerHeader">
+        <span class="rp-title">🤖 SELECT ROBOT</span>
+        <span class="rp-hint">ESC to close</span>
+      </div>
+      <div id="robotPickerBody">
+        <!-- Items will be populated dynamically -->
+      </div>
+      <div id="robotPickerFooter">
+        <span class="rp-footer-text">Click to switch · Tab to cycle · Esc to close</span>
       </div>
     </div>
   </div>

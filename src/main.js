@@ -389,7 +389,8 @@ document.addEventListener('keydown', e => {
   if (e.code !== 'Tab') return;
   e.preventDefault();
   if (muMode) {
-    multiuser.claimNextRobot();
+    // ── Toggle robot picker popup ──
+    toggleRobotPicker();
     return;
   }
   // ✅ لا نفرج عن الصندوق عند التبديل — الروبوت السابق سيستمر بالإمساك
@@ -402,6 +403,119 @@ document.addEventListener('keydown', e => {
   robotApi.setRobot3D(getActive());
   syncSlidersToActive();
 });
+
+// ===== ROBOT PICKER POPUP =====
+const _rpOverlay = document.getElementById('robotPickerOverlay');
+const _rpBody    = document.getElementById('robotPickerBody');
+let _rpOpen = false;
+
+// Robot metadata for display
+const ROBOT_META = [
+  { name: 'Robot 1', type: 'Standard Arm',   color: '#4488BB' },
+  { name: 'Robot 2', type: 'ABB Industrial',  color: '#CC2936' },
+  { name: 'Robot 3', type: 'Fanuc Cobot',     color: '#E8B931' },
+  { name: 'Robot 4', type: 'Cobot',           color: '#44BBAA' },
+];
+
+function openRobotPicker() {
+  if (_rpOpen) return;
+  _rpOpen = true;
+  populateRobotPicker();
+  _rpOverlay.classList.add('visible');
+}
+
+function closeRobotPicker() {
+  if (!_rpOpen) return;
+  _rpOpen = false;
+  _rpOverlay.classList.remove('visible');
+}
+
+function toggleRobotPicker() {
+  if (_rpOpen) closeRobotPicker();
+  else openRobotPicker();
+}
+
+function populateRobotPicker() {
+  _rpBody.innerHTML = '';
+  const statuses = multiuser ? multiuser.getRobotStatuses() : [];
+
+  for (let i = 0; i < robots.length; i++) {
+    const meta = ROBOT_META[i] || { name: `Robot ${i + 1}`, type: 'Unknown', color: '#888' };
+    const st   = statuses[i] || { index: i, isFree: true, isYours: i === activeIdx, ownerClientId: null };
+
+    const item = document.createElement('div');
+    item.className = 'rp-item';
+
+    // Status class
+    let statusText, statusClass;
+    if (st.isYours) {
+      item.classList.add('rp-current');
+      statusText = '● YOURS';
+      statusClass = 'yours';
+    } else if (st.isFree) {
+      statusText = '◎ FREE';
+      statusClass = 'free';
+    } else {
+      item.classList.add('rp-locked');
+      statusText = '🔒 IN USE';
+      statusClass = 'locked';
+    }
+
+    item.innerHTML = `
+      <div class="rp-color-dot" style="background:${meta.color};"></div>
+      <div class="rp-info">
+        <div class="rp-name">${meta.name}</div>
+        <div class="rp-type">${meta.type}</div>
+      </div>
+      <span class="rp-status ${statusClass}">${statusText}</span>
+      <span class="rp-key-hint">[${i + 1}]</span>
+    `;
+
+    // Click handler for free robots
+    if (st.isFree && !st.isYours) {
+      item.addEventListener('click', () => {
+        claimAndSwitch(i);
+      });
+    }
+
+    _rpBody.appendChild(item);
+  }
+}
+
+function claimAndSwitch(idx) {
+  if (!multiuser) return;
+  const ok = multiuser.claimRobot(idx);
+  if (ok) {
+    closeRobotPicker();
+  }
+}
+
+// Close on ESC
+document.addEventListener('keydown', e => {
+  if (e.code === 'Escape' && _rpOpen) {
+    e.preventDefault();
+    closeRobotPicker();
+  }
+  // Number keys 1-4 to quick-select in picker
+  if (_rpOpen && e.code.startsWith('Digit')) {
+    const num = parseInt(e.code.replace('Digit', ''));
+    if (num >= 1 && num <= robots.length) {
+      e.preventDefault();
+      const statuses = multiuser ? multiuser.getRobotStatuses() : [];
+      const st = statuses[num - 1];
+      if (st && st.isFree && !st.isYours) {
+        claimAndSwitch(num - 1);
+      }
+    }
+  }
+});
+
+// Close when clicking overlay background
+if (_rpOverlay) {
+  _rpOverlay.addEventListener('click', e => {
+    if (e.target === _rpOverlay) closeRobotPicker();
+  });
+}
 
 function syncSlidersToActive() {
   const a = getActive();
@@ -830,7 +944,7 @@ renderer.setAnimationLoop(function mainLoop() {
 
 // ── XR helper: switch robot (shared by controllers + hand tracking) ──
 function xrSwitchRobot() {
-  if (muMode) { multiuser.claimNextRobot(); return; }
+  if (muMode) { multiuser.claimNextRobot(); return; } // VR: cycle directly (no popup in XR)
   if (grabbed) actuateRelease();
   const prev = getActive(); prev.setDrive(0, 0);
   if (!grabbed) prev.setSqueeze(0);
