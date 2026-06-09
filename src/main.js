@@ -804,7 +804,7 @@ renderer.setAnimationLoop(function mainLoop() {
       rMid: document.getElementById('tRMid')?.textContent || 'OFF',
       rBase: document.getElementById('tRBase')?.textContent || 'OFF',
       robots: multiuser ? multiuser.getRobotStatuses() : [],
-      visionCanvas: document.getElementById('cameraOverlay'),
+      visionCanvas: document.getElementById('camCanvas'),
     };
     
     // Force camera rendering if VRUI is displaying it
