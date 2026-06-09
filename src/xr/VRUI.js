@@ -691,7 +691,7 @@ export class VRUI {
 
     for (let i = 0; i < robots.length; i++) {
       const st = robots[i];
-      const m = META[i] || { name: \`Robot \${i+1}\`, type: 'Unknown', color: '#888' };
+      const m = META[i] || { name: `Robot ${i+1}`, type: 'Unknown', color: '#888' };
       
       const isHovered = this._hoveredEl === 'robot_' + i;
       
