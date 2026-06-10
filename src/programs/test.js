@@ -161,7 +161,7 @@
         this._distReduction = 0;
         this._shoulderBoost = 0;
         this._adaptCooldown = 0;
-        
+
         // ── Detour Routing State ────────────
         this._waypoints = []; // Will be populated dynamically
         this._wpIndex = 0;
@@ -223,7 +223,7 @@
             if (toObstacle < pathLen + 1.0 && obstacleToGoal < pathLen + 1.0) {
               if (d < closestDist) {
                 closestDist = d;
-                closest = { id: 'box_'+b.id, x: bPos.x, z: bPos.z };
+                closest = { id: 'box_' + b.id, x: bPos.x, z: bPos.z };
               }
             }
           }
@@ -285,26 +285,26 @@
               return false;
             }
           } else if (this._waypoints.length > 1 && this._wpIndex === 0) {
-             const directBlocker = this._findBlockingObstacle(base.x, base.z, finalGoal.x, finalGoal.z);
-             if (!directBlocker) {
-               this._waypoints = [{ ...finalGoal }];
-               this._wpIndex = 0;
-               this._avoidAttempts = 0;
-               this._waitingForClear = false;
-             }
+            const directBlocker = this._findBlockingObstacle(base.x, base.z, finalGoal.x, finalGoal.z);
+            if (!directBlocker) {
+              this._waypoints = [{ ...finalGoal }];
+              this._wpIndex = 0;
+              this._avoidAttempts = 0;
+              this._waitingForClear = false;
+            }
           }
         }
 
         const targetYaw = Math.atan2(wp.x - base.x, wp.z - base.z);
         const yawErr = normalizeRad(targetYaw - (ar.baseState?.yaw ?? 0));
         const mv = ar.description.movement;
-        
+
         let driveSpeed = 0;
         if (Math.abs(yawErr) < 0.4) {
-           driveSpeed = clamp(Math.hypot(wp.x - base.x, wp.z - base.z) * 0.75, 0.18, mv.speed * 0.55 * speedMult);
+          driveSpeed = clamp(Math.hypot(wp.x - base.x, wp.z - base.z) * 0.75, 0.18, mv.speed * 0.55 * speedMult);
         }
         const turnSpeed = Math.abs(yawErr) < 0.04 ? 0 : clamp(yawErr * 1.7, -mv.turn, mv.turn);
-        
+
         ar.setDrive(driveSpeed, turnSpeed);
         return false;
       }
@@ -393,15 +393,15 @@
           // Since it's often a scale visual issue, let's just let the stall handler deal with it
           // or switch back to navigate.
           if (this._phase === 'approach' && this._stallCount > 0) {
-              // Let it continue to the stall logic or grab logic below
+            // Let it continue to the stall logic or grab logic below
           } else {
-              this.robot.moveArm('shoulder', 0);
-              this.robot.moveArm('elbow', 0);
-              this.robot.moveArm('wrist', 0);
-              this._openFingers(ar, coords);
-              ar.setSqueeze(0);
-              this._switchPhase('navigate');
-              return;
+            this.robot.moveArm('shoulder', 0);
+            this.robot.moveArm('elbow', 0);
+            this.robot.moveArm('wrist', 0);
+            this._openFingers(ar, coords);
+            ar.setSqueeze(0);
+            this._switchPhase('navigate');
+            return;
           }
         }
 
@@ -594,7 +594,7 @@
 
           const base = ar.parts.base.group.position;
           const targetYaw = Math.atan2(DROP_GOAL.x - base.x, DROP_GOAL.z - base.z);
-          
+
           const desc = ar.description;
           const l1 = desc.arm?.shoulder?.len ?? 0.8;
           const l2 = (desc.arm?.elbow?.len ?? 0.8) + (desc.arm?.wrist?.h ?? 0);
@@ -604,7 +604,7 @@
           const boxHalf = desc.box?.half ?? 0.25;
           const approachOff = boxHalf + (Math.max(palmD, fingerD) / 2) + 0.04;
           const dropPrefDist = Math.max(1.2, maxReach + approachOff - 0.3);
-          
+
           const dropOffsetCoords = {
             x: DROP_GOAL.x - Math.sin(targetYaw) * dropPrefDist,
             y: DROP_GOAL.y ?? 0,
@@ -619,16 +619,16 @@
 
         if (this._phase === 'place') {
           ar.setDrive(0, 0);
-          
+
           const desc = ar.description;
           const boxHalf = desc.box?.half ?? 0.25;
-          
+
           // Use the ACTUAL drop goal coordinates so the IK perfectly matches the approach phase!
           const placeCoords = { x: DROP_GOAL.x, y: boxHalf, z: DROP_GOAL.z };
           const target = localTargetFrom(ar, placeCoords);
-          
+
           const angles = solveArmAngles(ar, placeCoords, target, { minY: -0.15, shoulderMin: -90 });
-          
+
           this.robot.moveArm('shoulder', angles.shoulder);
           this.robot.moveArm('elbow', angles.elbow);
           this.robot.moveArm('wrist', 0);
@@ -636,11 +636,11 @@
           // ── DYNAMIC DESCENT DETECTION ──
           // Track the actual physical movement of the hand!
           const palmG = ar.parts.palm.group;
-          const palmWP = palmG.getWorldPosition(ar.parts.base.group.position.clone().set(0,0,0));
-          
+          const palmWP = palmG.getWorldPosition(ar.parts.base.group.position.clone().set(0, 0, 0));
+
           this._lastPalmY = this._lastPalmY ?? palmWP.y;
           const diff = Math.abs(palmWP.y - this._lastPalmY);
-          
+
           if (diff < 0.0015) {
             this._palmStableCount = (this._palmStableCount || 0) + 1;
           } else {
@@ -752,14 +752,14 @@
         const limZ = (fd / 2 + boxHalf + marginZ) * scale;
 
         const inGrip = Math.abs(lx) < limX && Math.abs(ly) < limY && Math.abs(lz) < limZ;
-        
+
         // Log locally if close but not in grip to help debugging
         if (!inGrip && Math.hypot(lx, ly, lz) < 1.5) {
-           this._lastGeoLog = this._lastGeoLog || 0;
-           if (performance.now() - this._lastGeoLog > 1500) {
-              console.log(`[GeoDebug] lx:${lx.toFixed(2)}/${limX.toFixed(2)} ly:${ly.toFixed(2)}/${limY.toFixed(2)} lz:${lz.toFixed(2)}/${limZ.toFixed(2)}`);
-              this._lastGeoLog = performance.now();
-           }
+          this._lastGeoLog = this._lastGeoLog || 0;
+          if (performance.now() - this._lastGeoLog > 1500) {
+            console.log(`[GeoDebug] lx:${lx.toFixed(2)}/${limX.toFixed(2)} ly:${ly.toFixed(2)}/${limY.toFixed(2)} lz:${lz.toFixed(2)}/${limZ.toFixed(2)}`);
+            this._lastGeoLog = performance.now();
+          }
         }
 
         return inGrip;

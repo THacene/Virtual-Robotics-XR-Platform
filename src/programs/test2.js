@@ -80,8 +80,8 @@
     const onDone = options.onDone ?? (() => { });
     const logger = options.logger ?? ((msg) => console.log(`[NavBot] ${msg}`));
     const STOP_RADIUS = 0.35;
-    const CORRIDOR_WIDTH = 2.0;      // عرض الممر الآمن (قطر)
-    const AVOID_RADIUS = 2.5;        // نصف قطر الالتفاف
+    const CORRIDOR_WIDTH = 1.4;      // قللنا عرض الممر ليتصرف بجرأة وسرعة أكبر
+    const AVOID_RADIUS = 1.6;        // التفاف ضيق وسريع بدلاً من التفاف واسع بطيء
 
     // ────────────────────────────────────────────
     class NavListener extends RobotListener {
@@ -149,14 +149,15 @@
         const detections = v.getDetections();
         for (let i = 0; i < detections.length; i++) {
           const d = detections[i];
-          if (d.name !== 'robot') continue;
+          // We removed the 'robot' filter to avoid ALL detected objects!
           const pos3d = v.estimate3DPosition(d);
-          const key = `vision_robot_${i}`;
+          const key = `vision_${d.name}_${i}`;
           this._otherRobots.set(key, {
             x: pos3d.x, z: pos3d.z,
             yaw: 0, speed: 0,
             lastSeen: now,
             _vision: true,
+            name: d.name
           });
         }
       }
@@ -225,7 +226,7 @@
         const now = performance.now();
 
         if (now > this._avoidCooldown) {
-          const blocker = this._findBlockingRobot(
+          const blocker = this._findBlockingObstacle(
             base.x, base.z, wp.x, wp.z
           );
 
@@ -254,8 +255,8 @@
               return;
             }
 
-            // حساب نقطة التفاف
-            const detour = computeDetour(
+            // حساب نقطة التفاف ذكية
+            const detour = this._computeSmartDetour(
               base.x, base.z, GOAL.x, GOAL.z,
               blocker.x, blocker.z, AVOID_RADIUS
             );
@@ -264,7 +265,7 @@
               this._avoidAttempts++;
               this._waypoints = [detour, { ...GOAL }];
               this._wpIndex = 0;
-              this._avoidCooldown = now + 1200;  // تبريد 1.2 ثانية
+              this._avoidCooldown = now + 200;  // تبريد سريع جداً (200ms) بدلاً من 1.2s
               this._switchPhase('avoiding');
 
               logger(
@@ -273,20 +274,24 @@
                 `to avoid ${blocker.id} at (${blocker.x.toFixed(1)}, ${blocker.z.toFixed(1)})`
               );
 
-              // توقف قصير ثم أكمل
-              ar.setDrive(0, 0);
+              // لا نوقف الروبوت، دعه يكمل حركته بسلاسة وبسرعة
               return;
             }
           } else {
-            // ── المسار واضح ──
+            // ── المسار نحو نقطة الطريق الحالية واضح ──
             if (this._phase === 'avoiding' || this._phase === 'waiting') {
-              // المسار أصبح حراً → أعد حساب المسار المباشر
-              this._waypoints = [{ ...GOAL }];
-              this._wpIndex = 0;
-              this._avoidAttempts = 0;
-              this._waitingForClear = false;
-              this._switchPhase('moving');
-              logger(`✅ Path clear → direct route`);
+              // لا نلغي التفافنا إلا إذا كان المسار للهدف النهائي واضحاً تماماً!
+              const blockedToGoal = this._findBlockingObstacle(base.x, base.z, GOAL.x, GOAL.z);
+              
+              if (!blockedToGoal) {
+                // المسار المباشر أصبح حراً → أعد حساب المسار المباشر
+                this._waypoints = [{ ...GOAL }];
+                this._wpIndex = 0;
+                this._avoidAttempts = 0;
+                this._waitingForClear = false;
+                this._switchPhase('moving');
+                logger(`✅ Path clear → direct route`);
+              }
             }
           }
         }
@@ -305,9 +310,9 @@
           speed = clamp(dist * 0.55, 0.08, mv.speed * 0.65);
         }
 
-        // دوران: تصحيح الاتجاه
+        // دوران: تصحيح الاتجاه بسرعة فائقة
         const turn = Math.abs(yawErr) < 0.04
-          ? 0 : clamp(yawErr * 2.0, -mv.turn, mv.turn);
+          ? 0 : clamp(yawErr * 3.5, -mv.turn, mv.turn);
 
         ar.setDrive(speed, turn);
 
@@ -330,7 +335,7 @@
       //    - هل هي قريبة من خط المسار (ضمن CORRIDOR_WIDTH)؟
       //    - هل هي بيننا وبين الهدف (ليست خلفنا)؟
       // ══════════════════════════════════════
-      _findBlockingRobot(cx, cz, gx, gz) {
+      _findBlockingObstacle(cx, cz, gx, gz) {
         const now = performance.now();
         const pathLen = Math.hypot(gx - cx, gz - cz);
         if (pathLen < 0.5) return null;     // قريب جداً، لا حاجة للفحص
@@ -338,6 +343,7 @@
         let closest = null;
         let closestDist = Infinity;
 
+        // 1. Check other robots and vision obstacles
         for (const [id, data] of this._otherRobots) {
           // تجاهل البيانات القديمة (> 300ms)
           if (now - data.lastSeen > 300) continue;
@@ -356,12 +362,70 @@
           if (toRobot < pathLen + 1.0 && robotToGoal < pathLen + 1.0) {
             if (d < closestDist) {
               closestDist = d;
-              closest = { id, x: data.x, z: data.z };
+              closest = { id: data.name || id, x: data.x, z: data.z };
+            }
+          }
+        }
+
+        // 2. Check global boxes array directly (more precise than vision)
+        if (window.__boxes) {
+          const targetId = window.targetBoxId; // if we are targeting a specific box
+          for (const b of window.__boxes) {
+            if (b.id === targetId || b.body.position.y > 0.4) continue; // Ignore target or flying boxes
+            
+            const bPos = b.body.position;
+            const d = pointToSegmentDist(bPos.x, bPos.z, cx, cz, gx, gz);
+            if (d >= CORRIDOR_WIDTH * 0.7) continue; // boxes are smaller, corridor can be tighter
+            
+            const toObstacle = Math.hypot(bPos.x - cx, bPos.z - cz);
+            const obstacleToGoal = Math.hypot(bPos.x - gx, bPos.z - gz);
+            
+            if (toObstacle < pathLen + 1.0 && obstacleToGoal < pathLen + 1.0) {
+              if (d < closestDist) {
+                closestDist = d;
+                closest = { id: 'box_' + b.id, x: bPos.x, z: bPos.z };
+              }
             }
           }
         }
 
         return closest;
+      }
+
+      // ══════════════════════════════════════
+      //  تحديد مسار التفاف ذكي لا يصطدم بعوائق أخرى
+      // ══════════════════════════════════════
+      _computeSmartDetour(cx, cz, gx, gz, ox, oz, avoidRadius) {
+        const dx = gx - cx, dz = gz - cz;
+        const len = Math.hypot(dx, dz);
+        if (len < 0.01) return null;
+
+        const perpX = -dz / len, perpZ = dx / len;
+        
+        // جرب مسافات التفاف متزايدة لتجنب الاصطدام الثنائي (Ping-Pong)
+        for (let mult = 1.0; mult <= 3.0; mult += 0.5) {
+          const offset = avoidRadius * mult;
+          const w1 = { x: ox + perpX * offset, z: oz + perpZ * offset };
+          const w2 = { x: ox - perpX * offset, z: oz - perpZ * offset };
+          
+          // تأكد أن المسار نحو نقطة الالتفاف لا يمر عبر عائق آخر!
+          const b1 = this._findBlockingObstacle(cx, cz, w1.x, w1.z);
+          const b2 = this._findBlockingObstacle(cx, cz, w2.x, w2.z);
+          
+          if (!b1 && !b2) {
+            const cost1 = Math.hypot(w1.x - cx, w1.z - cz) + Math.hypot(w1.x - gx, w1.z - gz);
+            const cost2 = Math.hypot(w2.x - cx, w2.z - cz) + Math.hypot(w2.x - gx, w2.z - gz);
+            return cost1 <= cost2 ? w1 : w2;
+          } else if (!b1) {
+            return w1; // w1 آمن
+          } else if (!b2) {
+            return w2; // w2 آمن
+          }
+        }
+        
+        // إذا كان كلا المسارين مغلقين حتى مع التوسيع، أرجع الخيار الأول فقط وادعو الله
+        const offset = avoidRadius * 1.5;
+        return { x: ox + perpX * offset, z: oz + perpZ * offset };
       }
 
       // ── إيقاف من الخارج ─────────────────

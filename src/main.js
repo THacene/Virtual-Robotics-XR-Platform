@@ -371,6 +371,7 @@ const cobot = new Robot3D(makeDescription({ type: 'cobot' }), ctx);
 cobot.setPosition(5, 2);
 
 const robots = [robot1, robot2, robot3, cobot];
+window.__robots = robots; // Expose globally for collision avoidance
 
 let activeIdx = 0;
 const getActive = () => robots[activeIdx];
