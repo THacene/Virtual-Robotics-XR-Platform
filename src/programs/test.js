@@ -63,7 +63,7 @@
     const bend = Math.acos(cosQ2);
     const limits = desc.joints?.limits ?? {};
 
-    const shoulderMin = overrides.shoulderMin ?? 15;
+    const shoulderMin = overrides.shoulderMin ?? -45;
 
     const score = s => {
       let penalty = 0;
@@ -95,19 +95,29 @@
     };
   }
 
-  function driveBaseTo(ar, goal, stopRadius = 0.18) {
-    const base = ar.parts.base.group.position;
-    const dx = goal.x - base.x, dz = goal.z - base.z;
-    const dist = Math.hypot(dx, dz);
-    if (dist < stopRadius) { ar.setDrive(0, 0); return true; }
-    const yawErr = normalizeRad(Math.atan2(dx, dz) - (ar.baseState?.yaw ?? 0));
-    const mv = ar.description.movement;
-    ar.setDrive(
-      Math.abs(yawErr) < 0.35 ? clamp(dist * 0.75, 0.18, mv.speed * 0.55) : 0,
-      Math.abs(yawErr) < 0.04 ? 0 : clamp(yawErr * 1.7, -mv.turn, mv.turn)
-    );
-    return false;
+  function pointToSegmentDist(px, pz, ax, az, bx, bz) {
+    const dx = bx - ax, dz = bz - az;
+    const len2 = dx * dx + dz * dz;
+    if (len2 < 0.001) return Math.hypot(px - ax, pz - az);
+    let t = ((px - ax) * dx + (pz - az) * dz) / len2;
+    t = Math.max(0, Math.min(1, t));
+    const projX = ax + t * dx, projZ = az + t * dz;
+    return Math.hypot(px - projX, pz - projZ);
   }
+
+  function computeDetour(cx, cz, gx, gz, ox, oz, avoidRadius) {
+    const dx = gx - cx, dz = gz - cz;
+    const len = Math.hypot(dx, dz);
+    if (len < 0.01) return null;
+    const perpX = -dz / len, perpZ = dx / len;
+    const offset = avoidRadius + 1.5;
+    const w1 = { x: ox + perpX * offset, z: oz + perpZ * offset };
+    const w2 = { x: ox - perpX * offset, z: oz - perpZ * offset };
+    const cost1 = Math.hypot(w1.x - cx, w1.z - cz) + Math.hypot(w1.x - gx, w1.z - gz);
+    const cost2 = Math.hypot(w2.x - cx, w2.z - cz) + Math.hypot(w2.x - gx, w2.z - gz);
+    return cost1 <= cost2 ? w1 : w2;
+  }
+
 
   // ══════════════════════════════════════════════════════════
   //
@@ -151,6 +161,15 @@
         this._distReduction = 0;
         this._shoulderBoost = 0;
         this._adaptCooldown = 0;
+        
+        // ── Detour Routing State ────────────
+        this._waypoints = []; // Will be populated dynamically
+        this._wpIndex = 0;
+        this._avoidCooldown = 0;
+        this._avoidAttempts = 0;
+        this._maxAvoidAttempts = 12;
+        this._waitingForClear = false;
+        this._waitStartTime = 0;
       }
 
       get _ar() { return this.robot._robot3D; }
@@ -165,6 +184,130 @@
       }
 
       _elapsed() { return performance.now() - this._phaseAt; }
+
+      _findBlockingObstacle(cx, cz, gx, gz) {
+        const pathLen = Math.hypot(gx - cx, gz - cz);
+        if (pathLen < 0.5) return null;
+        const CORRIDOR_WIDTH = 2.0;
+        let closest = null;
+        let closestDist = Infinity;
+
+        // Check Robots
+        if (window.__robots) {
+          for (const r of window.__robots) {
+            if (r === this._ar) continue;
+            const rPos = r.parts.base.group.position;
+            const d = pointToSegmentDist(rPos.x, rPos.z, cx, cz, gx, gz);
+            if (d >= CORRIDOR_WIDTH) continue;
+            const toObstacle = Math.hypot(rPos.x - cx, rPos.z - cz);
+            const obstacleToGoal = Math.hypot(rPos.x - gx, rPos.z - gz);
+            if (toObstacle < pathLen + 1.0 && obstacleToGoal < pathLen + 1.0) {
+              if (d < closestDist) {
+                closestDist = d;
+                closest = { id: r.description.name || 'robot', x: rPos.x, z: rPos.z };
+              }
+            }
+          }
+        }
+
+        // Check Boxes
+        if (window.__boxes) {
+          const targetId = window.targetBoxId;
+          for (const b of window.__boxes) {
+            if (b.id === targetId || b.body.position.y > 0.4) continue;
+            const bPos = b.body.position;
+            const d = pointToSegmentDist(bPos.x, bPos.z, cx, cz, gx, gz);
+            if (d >= CORRIDOR_WIDTH * 0.7) continue; // smaller corridor for boxes
+            const toObstacle = Math.hypot(bPos.x - cx, bPos.z - cz);
+            const obstacleToGoal = Math.hypot(bPos.x - gx, bPos.z - gz);
+            if (toObstacle < pathLen + 1.0 && obstacleToGoal < pathLen + 1.0) {
+              if (d < closestDist) {
+                closestDist = d;
+                closest = { id: 'box_'+b.id, x: bPos.x, z: bPos.z };
+              }
+            }
+          }
+        }
+        return closest;
+      }
+
+      _driveWithDetour(ar, finalGoal, stopRadius = 0.18, speedMult = 1.0) {
+        const base = ar.parts.base.group.position;
+        const now = performance.now();
+
+        // If waypoints are empty or last waypoint is not finalGoal, reset
+        if (this._waypoints.length === 0 || this._waypoints[this._waypoints.length - 1].x !== finalGoal.x || this._waypoints[this._waypoints.length - 1].z !== finalGoal.z) {
+          this._waypoints = [{ ...finalGoal }];
+          this._wpIndex = 0;
+        }
+
+        let wp = this._waypoints[this._wpIndex];
+        const dx = wp.x - base.x, dz = wp.z - base.z;
+        const dist = Math.hypot(dx, dz);
+
+        if (dist < stopRadius) {
+          if (this._wpIndex < this._waypoints.length - 1) {
+            this._wpIndex++;
+            wp = this._waypoints[this._wpIndex];
+            logger(`📍 Waypoint reached, heading to next`, 'info');
+          } else {
+            ar.setDrive(0, 0);
+            return true; // reached final goal
+          }
+        }
+
+        if (now > this._avoidCooldown) {
+          const blocker = this._findBlockingObstacle(base.x, base.z, wp.x, wp.z);
+          if (blocker) {
+            if (this._avoidAttempts >= this._maxAvoidAttempts) {
+              if (!this._waitingForClear) {
+                this._waitingForClear = true;
+                this._waitStartTime = now;
+                logger(`⏳ Path blocked by ${blocker.id} — waiting...`, 'warn');
+              }
+              ar.setDrive(0, 0);
+              if (now - this._waitStartTime > 3000) {
+                this._avoidAttempts = 0;
+                this._waitingForClear = false;
+                this._waypoints = [{ ...finalGoal }];
+                this._wpIndex = 0;
+              }
+              return false;
+            }
+            const detour = computeDetour(base.x, base.z, finalGoal.x, finalGoal.z, blocker.x, blocker.z, 2.5);
+            if (detour) {
+              this._avoidAttempts++;
+              this._waypoints = [detour, { ...finalGoal }];
+              this._wpIndex = 0;
+              this._avoidCooldown = now + 1000;
+              logger(`🔀 Detour computed to avoid ${blocker.id}`, 'info');
+              ar.setDrive(0, 0);
+              return false;
+            }
+          } else if (this._waypoints.length > 1 && this._wpIndex === 0) {
+             const directBlocker = this._findBlockingObstacle(base.x, base.z, finalGoal.x, finalGoal.z);
+             if (!directBlocker) {
+               this._waypoints = [{ ...finalGoal }];
+               this._wpIndex = 0;
+               this._avoidAttempts = 0;
+               this._waitingForClear = false;
+             }
+          }
+        }
+
+        const targetYaw = Math.atan2(wp.x - base.x, wp.z - base.z);
+        const yawErr = normalizeRad(targetYaw - (ar.baseState?.yaw ?? 0));
+        const mv = ar.description.movement;
+        
+        let driveSpeed = 0;
+        if (Math.abs(yawErr) < 0.4) {
+           driveSpeed = clamp(Math.hypot(wp.x - base.x, wp.z - base.z) * 0.75, 0.18, mv.speed * 0.55 * speedMult);
+        }
+        const turnSpeed = Math.abs(yawErr) < 0.04 ? 0 : clamp(yawErr * 1.7, -mv.turn, mv.turn);
+        
+        ar.setDrive(driveSpeed, turnSpeed);
+        return false;
+      }
 
       // ══════════════════════════════════════
       //  EVENT: onObjectDetected
@@ -220,34 +363,24 @@
 
         const ikOverrides = {
           minY: -0.15 - (this._stallCount * 0.05),
-          shoulderMin: Math.max(-10, 15 - this._stallCount * 3 + this._shoulderBoost),
+          shoulderMin: Math.max(-45, -15 - this._stallCount * 3 + this._shoulderBoost),
         };
 
         const angles = solveArmAngles(ar, offsetCoords, target, ikOverrides);
-        const yawErr = normalizeRad(target.targetYaw - target.yaw);
 
         const basePrefDist = clamp(angles.maxReach + angles.approachOff - 0.3,
-          2.6, angles.maxReach + angles.approachOff);
+          1.0, angles.maxReach + angles.approachOff);
         const prefDist = Math.max(1.0, basePrefDist - this._distReduction);
 
-        const fwdErr = target.forward - prefDist;
-        const aligned = Math.abs(yawErr) < 0.22;
+        const yawErr = normalizeRad(target.targetYaw - target.yaw);
 
-        let speed = 0;
-        if (aligned && fwdErr > 0.02) {
-          const ratio = clamp(fwdErr / 0.25, 0.15, 1);
-          speed = clamp(fwdErr * 0.55 * ratio, 0.015, mv.speed * 0.45);
+        // ── Navigate Phase (uses detour routing) ──
+        if (this._phase === 'navigate') {
+          this._driveWithDetour(ar, offsetCoords, prefDist + 0.1, 1.0);
+        } else {
+          // In approach phase, base is stopped
+          ar.setDrive(0, 0);
         }
-        let turn = Math.abs(yawErr) < 0.04
-          ? 0 : clamp(yawErr * 1.8, -mv.turn, mv.turn);
-
-        // ── Stop base drive once arm is deployed in approach ──
-        if (this._phase === 'approach') {
-          speed = 0;
-          turn = 0;
-        }
-
-        ar.setDrive(speed, turn);
 
         const canDeploy =
           target.forward <= prefDist + 0.35 &&
@@ -255,16 +388,21 @@
           Math.abs(target.side) <= (coords.half ?? 0.25) + 0.22;
 
         if (!canDeploy) {
-          if (this._phase === 'approach') {
-            return;
+          // If we are in approach but can no longer deploy (e.g. distReduction caused prefDist to drop),
+          // we should either grab it if it's close, or revert to navigate.
+          // Since it's often a scale visual issue, let's just let the stall handler deal with it
+          // or switch back to navigate.
+          if (this._phase === 'approach' && this._stallCount > 0) {
+              // Let it continue to the stall logic or grab logic below
+          } else {
+              this.robot.moveArm('shoulder', 0);
+              this.robot.moveArm('elbow', 0);
+              this.robot.moveArm('wrist', 0);
+              this._openFingers(ar, coords);
+              ar.setSqueeze(0);
+              this._switchPhase('navigate');
+              return;
           }
-          this.robot.moveArm('shoulder', 0);
-          this.robot.moveArm('elbow', 0);
-          this.robot.moveArm('wrist', 0);
-          this._openFingers(ar, coords);
-          ar.setSqueeze(0);
-          this._switchPhase('navigate');
-          return;
         }
 
         if (this._phase !== 'approach') {
@@ -453,16 +591,68 @@
           this.robot.moveArm('shoulder', 22);
           this.robot.moveArm('elbow', 20);
           this.robot.moveArm('wrist', 0);
-          if (driveBaseTo(ar, DROP_GOAL)) this._switchPhase('place');
+
+          const base = ar.parts.base.group.position;
+          const targetYaw = Math.atan2(DROP_GOAL.x - base.x, DROP_GOAL.z - base.z);
+          
+          const desc = ar.description;
+          const l1 = desc.arm?.shoulder?.len ?? 0.8;
+          const l2 = (desc.arm?.elbow?.len ?? 0.8) + (desc.arm?.wrist?.h ?? 0);
+          const maxReach = l1 + l2 - 0.04;
+          const palmD = desc.arm.palm?.d ?? 0.26;
+          const fingerD = desc.finger?.d ?? 0.18;
+          const boxHalf = desc.box?.half ?? 0.25;
+          const approachOff = boxHalf + (Math.max(palmD, fingerD) / 2) + 0.04;
+          const dropPrefDist = Math.max(1.2, maxReach + approachOff - 0.3);
+          
+          const dropOffsetCoords = {
+            x: DROP_GOAL.x - Math.sin(targetYaw) * dropPrefDist,
+            y: DROP_GOAL.y ?? 0,
+            z: DROP_GOAL.z - Math.cos(targetYaw) * dropPrefDist
+          };
+
+          if (this._driveWithDetour(ar, dropOffsetCoords, 0.18, 1.0)) {
+            this._switchPhase('place');
+          }
           return;
         }
 
         if (this._phase === 'place') {
           ar.setDrive(0, 0);
-          this.robot.moveArm('shoulder', 62);
-          this.robot.moveArm('elbow', 68);
+          
+          const desc = ar.description;
+          const boxHalf = desc.box?.half ?? 0.25;
+          
+          // Use the ACTUAL drop goal coordinates so the IK perfectly matches the approach phase!
+          const placeCoords = { x: DROP_GOAL.x, y: boxHalf, z: DROP_GOAL.z };
+          const target = localTargetFrom(ar, placeCoords);
+          
+          const angles = solveArmAngles(ar, placeCoords, target, { minY: -0.15, shoulderMin: -90 });
+          
+          this.robot.moveArm('shoulder', angles.shoulder);
+          this.robot.moveArm('elbow', angles.elbow);
           this.robot.moveArm('wrist', 0);
-          if (this._elapsed() >= 1800) {
+
+          // ── DYNAMIC DESCENT DETECTION ──
+          // Track the actual physical movement of the hand!
+          const palmG = ar.parts.palm.group;
+          const palmWP = palmG.getWorldPosition(ar.parts.base.group.position.clone().set(0,0,0));
+          
+          this._lastPalmY = this._lastPalmY ?? palmWP.y;
+          const diff = Math.abs(palmWP.y - this._lastPalmY);
+          
+          if (diff < 0.0015) {
+            this._palmStableCount = (this._palmStableCount || 0) + 1;
+          } else {
+            this._palmStableCount = 0;
+          }
+          this._lastPalmY = palmWP.y;
+
+          // Give it at least 2.5 seconds to start descending.
+          // Once it has completely stopped moving for ~60 frames (1-2 seconds), it means it has reached the ground!
+          // Ultimate fallback: 20 seconds.
+          if ((this._elapsed() > 2500 && this._palmStableCount > 60) || this._elapsed() > 20000) {
+            this._lastPalmY = null; // reset
             this._startAutoRelease();
           }
           return;
@@ -544,17 +734,35 @@
         const lz = iz * qw + iw * (-qz) + ix * (-qy) - iy * (-qx);
 
         const boxHalf = coords.half ?? ar.description.box?.half ?? 0.25;
-        const fingerX = ar.parts.fingers.right.group.position.x;
+        const fingerX = Math.abs(ar.parts.fingers.right.group.position.x);
         const fw = ar.FW ?? ar.parts.constants?.FW ?? 0.09;
-        const innerX = fingerX - fw / 2;
+        const innerX = Math.max(0, fingerX - fw / 2);
         const fh = ar.FH ?? ar.parts.constants?.FH ?? 0.6;
         const fd = ar.FD ?? ar.parts.constants?.FD ?? 0.18;
 
-        return (
-          Math.abs(lx) < (innerX + boxHalf + 0.05) &&
-          Math.abs(ly) < (fh / 2 + boxHalf + 0.05) &&
-          Math.abs(lz) < (fd / 2 + boxHalf + 0.05)
-        );
+        const scale = ar.parts.base.group.scale.x || 1.0;
+
+        // Moderate margins to guarantee grab if visually inside, but scaled correctly!
+        const marginX = 0.2;
+        const marginY = 0.2;
+        const marginZ = 0.2;
+
+        const limX = (innerX + boxHalf + marginX) * scale;
+        const limY = (fh / 2 + boxHalf + marginY) * scale;
+        const limZ = (fd / 2 + boxHalf + marginZ) * scale;
+
+        const inGrip = Math.abs(lx) < limX && Math.abs(ly) < limY && Math.abs(lz) < limZ;
+        
+        // Log locally if close but not in grip to help debugging
+        if (!inGrip && Math.hypot(lx, ly, lz) < 1.5) {
+           this._lastGeoLog = this._lastGeoLog || 0;
+           if (performance.now() - this._lastGeoLog > 1500) {
+              console.log(`[GeoDebug] lx:${lx.toFixed(2)}/${limX.toFixed(2)} ly:${ly.toFixed(2)}/${limY.toFixed(2)} lz:${lz.toFixed(2)}/${limZ.toFixed(2)}`);
+              this._lastGeoLog = performance.now();
+           }
+        }
+
+        return inGrip;
       }
 
       // ══════════════════════════════════════
