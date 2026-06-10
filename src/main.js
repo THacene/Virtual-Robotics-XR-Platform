@@ -1032,7 +1032,64 @@ function setupXRSystems() {
       if (isBoxBetweenFingers(robotApi)) return 'READY';
       return 'STANDBY';
     },
-    exitXR: () => { if (_xrSess) _xrSess.end(); }
+    exitXR: () => { if (_xrSess) _xrSess.end(); },
+    // ── ROBOT CREATOR API ──
+    openCreatorUI: () => {
+      if (_vrUI) {
+        _vrUI.show();
+        _vrUI._view = 'create';
+      }
+      openRobotCreator();
+    },
+    openCreator: () => { openRobotCreator(); },
+    closeCreator: () => { closeRobotCreator(); },
+    getCreatorState: () => {
+      return {
+        type: _rcType?.value || 'industrial',
+        color: _rcSelectedColor,
+        deployX: _rcDeployX,
+        deployZ: _rcDeployZ,
+        prevCanvas: _rcPrevCanvas,
+        mapCanvas: _rcMapCanvas
+      };
+    },
+    setCreatorColor: (hex) => {
+      _rcSelectedColor = hex;
+      if (_rcColors) {
+        _rcColors.querySelectorAll('.rc-color-btn').forEach(b => {
+          b.classList.toggle('selected', parseInt(b.dataset.color) === hex);
+        });
+      }
+      updateRobotPreview();
+    },
+    setCreatorType: (t) => {
+      if (_rcType) _rcType.value = t;
+      if (t === 'cobot') {
+        if (_rcSpeed) { _rcSpeed.value = 8; _rcSpeedVal.textContent = '0.8'; }
+        if (_rcGrip) { _rcGrip.value = 600; _rcGripVal.textContent = '600N'; }
+      } else {
+        if (_rcSpeed) { _rcSpeed.value = 20; _rcSpeedVal.textContent = '2.0'; }
+        if (_rcGrip) { _rcGrip.value = 1200; _rcGripVal.textContent = '1200N'; }
+      }
+      updateRobotPreview();
+    },
+    setCreatorMapPos: (u, v) => {
+      const W = _rcMapCanvas?.width || 1;
+      const H = _rcMapCanvas?.height || 1;
+      const scaleX = W / 60;
+      const scaleZ = H / 60;
+      const scale = Math.min(scaleX, scaleZ) * 0.88;
+      const mx = u * W;
+      const mz = v * H;
+      _rcDeployX = (mx - W / 2) / scale;
+      _rcDeployZ = (mz - H / 2) / scale;
+      _rcDeployX = Math.max(-28, Math.min(28, _rcDeployX));
+      _rcDeployZ = Math.max(-28, Math.min(28, _rcDeployZ));
+      if (_rcMapCoords) _rcMapCoords.textContent = `X: ${_rcDeployX.toFixed(1)}  Z: ${_rcDeployZ.toFixed(1)}`;
+    },
+    deployCreator: () => {
+      document.getElementById('btnDeployRobot')?.click();
+    }
   };
 
   // 1) VR Controller Manager
@@ -1308,6 +1365,627 @@ window.__handoff = {
   getActiveIdx() { return activeIdx; },
   suppressCollision: false,  // test3.js يضبطها true أثناء الاقتراب
 };
+
+// ═══════════════════════════════════════════════════════════════
+//  ROBOT CREATOR MODAL — Phase 1
+//  Full interactive modal: config + preview + mini factory map
+// ═══════════════════════════════════════════════════════════════
+const _rcOverlay   = document.getElementById('robotCreatorOverlay');
+const _rcPanel     = document.getElementById('robotCreatorPanel');
+const _rcName      = document.getElementById('rcName');
+const _rcType      = document.getElementById('rcType');
+const _rcColors    = document.getElementById('rcColors');
+const _rcArmLen    = document.getElementById('rcArmLen');
+const _rcArmLenVal = document.getElementById('rcArmLenVal');
+const _rcSpeed     = document.getElementById('rcSpeed');
+const _rcSpeedVal  = document.getElementById('rcSpeedVal');
+const _rcGrip      = document.getElementById('rcGrip');
+const _rcGripVal   = document.getElementById('rcGripVal');
+const _rcMapCoords = document.getElementById('rcMapCoords');
+const _rcMapCanvas = document.getElementById('rcMapCanvas');
+const _rcPrevCanvas= document.getElementById('rcPreviewCanvas');
+
+let _rcOpen = false;
+let _rcSelectedColor = 0xF7931E;  // Default KUKA orange
+let _rcDeployX = 6;
+let _rcDeployZ = -5;
+let _rcPreviewRenderer = null;
+let _rcPreviewScene = null;
+let _rcPreviewCamera = null;
+let _rcPreviewGroup = null;
+let _rcPreviewAnimId = null;
+
+// ── COLOR PICKER ──
+if (_rcColors) {
+  _rcColors.addEventListener('click', e => {
+    const btn = e.target.closest('.rc-color-btn');
+    if (!btn) return;
+    _rcColors.querySelectorAll('.rc-color-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+    _rcSelectedColor = parseInt(btn.dataset.color);
+    updateRobotPreview();
+  });
+}
+
+// ── SLIDERS ──
+if (_rcArmLen) _rcArmLen.oninput = function () {
+  _rcArmLenVal.textContent = (this.value / 100).toFixed(1) + 'm';
+  updateRobotPreview();
+};
+if (_rcSpeed) _rcSpeed.oninput = function () {
+  _rcSpeedVal.textContent = (this.value / 10).toFixed(1);
+};
+if (_rcGrip) _rcGrip.oninput = function () {
+  _rcGripVal.textContent = this.value + 'N';
+};
+if (_rcType) _rcType.onchange = function () {
+  // Update defaults when type changes
+  if (this.value === 'cobot') {
+    _rcSpeed.value = 8; _rcSpeedVal.textContent = '0.8';
+    _rcGrip.value = 600; _rcGripVal.textContent = '600N';
+  } else {
+    _rcSpeed.value = 20; _rcSpeedVal.textContent = '2.0';
+    _rcGrip.value = 1200; _rcGripVal.textContent = '1200N';
+  }
+  updateRobotPreview();
+};
+
+// ── OPEN / CLOSE ──
+function openRobotCreator() {
+  if (_rcOpen) return;
+  _rcOpen = true;
+  // Set default name
+  _rcName.value = `Robot ${robots.length + 1}`;
+  _rcOverlay.classList.add('visible');
+  initMiniFactoryMap();
+  initRobotPreview();
+  drawMiniFactoryMap();
+}
+
+function closeRobotCreator() {
+  if (!_rcOpen) return;
+  _rcOpen = false;
+  _rcOverlay.classList.remove('visible');
+  stopRobotPreview();
+}
+
+// Button bindings
+document.getElementById('btnCreateRobot')?.addEventListener('click', openRobotCreator);
+document.getElementById('btnCloseCreator')?.addEventListener('click', closeRobotCreator);
+document.getElementById('btnCancelCreator')?.addEventListener('click', closeRobotCreator);
+
+// Close on overlay click
+if (_rcOverlay) {
+  _rcOverlay.addEventListener('click', e => {
+    if (e.target === _rcOverlay) closeRobotCreator();
+  });
+}
+// Close on ESC
+document.addEventListener('keydown', e => {
+  if (e.code === 'Escape' && _rcOpen) { e.preventDefault(); closeRobotCreator(); }
+});
+
+// ═══════════════════════════════════════════════════════
+//  MINI FACTORY MAP — 2D Canvas top-down view
+// ═══════════════════════════════════════════════════════
+const MAP_FW = 60, MAP_FD = 60;  // Factory dimensions (from factory.js)
+
+function initMiniFactoryMap() {
+  if (!_rcMapCanvas) return;
+  const rect = _rcMapCanvas.parentElement.getBoundingClientRect();
+  _rcMapCanvas.width = rect.width * (window.devicePixelRatio || 1);
+  _rcMapCanvas.height = 180 * (window.devicePixelRatio || 1);
+  _rcMapCanvas.style.width = rect.width + 'px';
+  _rcMapCanvas.style.height = '180px';
+}
+
+function drawMiniFactoryMap() {
+  if (!_rcMapCanvas) return;
+  const ctx = _rcMapCanvas.getContext('2d');
+  const W = _rcMapCanvas.width;
+  const H = _rcMapCanvas.height;
+  const scaleX = W / MAP_FW;
+  const scaleZ = H / MAP_FD;
+  const scale = Math.min(scaleX, scaleZ) * 0.88;
+  const ox = W / 2;
+  const oz = H / 2;
+
+  function toMap(wx, wz) {
+    return [ox + wx * scale, oz + wz * scale];
+  }
+  function drawRect(wx, wz, ww, wd, color, rot = 0) {
+    const [cx, cy] = toMap(wx, wz);
+    ctx.save();
+    ctx.translate(cx, cy);
+    if (rot) ctx.rotate(rot);
+    ctx.fillStyle = color;
+    ctx.fillRect(-ww * scale / 2, -wd * scale / 2, ww * scale, wd * scale);
+    ctx.restore();
+  }
+
+  // Clear
+  ctx.fillStyle = '#0a0e14';
+  ctx.fillRect(0, 0, W, H);
+
+  // Grid
+  ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+  ctx.lineWidth = 1;
+  for (let g = -30; g <= 30; g += 5) {
+    const [gx] = toMap(g, 0);
+    ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, H); ctx.stroke();
+    const [, gy] = toMap(0, g);
+    ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke();
+  }
+
+  // Factory floor outline
+  const [flx, fly] = toMap(-MAP_FW / 2, -MAP_FD / 2);
+  const [frx, fry] = toMap(MAP_FW / 2, MAP_FD / 2);
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(flx, fly, frx - flx, fry - fly);
+
+  // Walls
+  drawRect(0, -30, 60, 0.3, 'rgba(100,110,120,0.4)');
+  drawRect(0, 30, 60, 0.3, 'rgba(100,110,120,0.4)');
+  drawRect(-30, 0, 0.3, 60, 'rgba(100,110,120,0.4)');
+  drawRect(30, 0, 0.3, 60, 'rgba(100,110,120,0.4)');
+
+  // Shelves (blue)
+  const shelves = [
+    { x: 18, z: -8, w: 12, d: 1.2 }, { x: 18, z: 4, w: 12, d: 1.2 },
+    { x: -18, z: -8, w: 12, d: 1.2 }, { x: -18, z: 4, w: 12, d: 1.2 },
+    { x: 0, z: -22, w: 1.2, d: 16, rot: 0 },
+    { x: -14, z: 18, w: 1.2, d: 8, rot: 0 },
+  ];
+  for (const s of shelves) {
+    drawRect(s.x, s.z, s.w, s.d, 'rgba(74,106,138,0.45)', s.rot || 0);
+  }
+
+  // Conveyors (dark)
+  drawRect(8, 12, 10, 0.9, 'rgba(56,60,66,0.5)');
+  drawRect(-8, -14, 8, 0.9, 'rgba(56,60,66,0.5)', Math.PI / 4);
+
+  // Columns
+  const cols = [
+    [-12, -12], [12, -12], [-12, 12], [12, 12], [-12, 0], [12, 0]
+  ];
+  for (const [cx, cz] of cols) {
+    drawRect(cx, cz, 0.5, 0.5, 'rgba(136,136,144,0.5)');
+  }
+
+  // Barrels
+  const barrels = [[22, 18], [22.8, 18], [22.4, 18.7], [-22, -18], [-22.8, -18], [22, -20]];
+  for (const [bx, bz] of barrels) {
+    const [mx, mz] = toMap(bx, bz);
+    ctx.beginPath();
+    ctx.arc(mx, mz, 3 * (scale / 5), 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(34,85,170,0.5)';
+    ctx.fill();
+  }
+
+  // Safety lines (yellow)
+  ctx.strokeStyle = 'rgba(232,200,49,0.25)';
+  ctx.lineWidth = 1;
+  const [slx1] = toMap(-20, 0); const [slx2] = toMap(20, 0);
+  const [, sly] = toMap(0, 0);
+  ctx.beginPath(); ctx.moveTo(slx1, sly); ctx.lineTo(slx2, sly); ctx.stroke();
+  const [smx] = toMap(0, 0); const [, smz1] = toMap(0, -20); const [, smz2] = toMap(0, 20);
+  ctx.beginPath(); ctx.moveTo(smx, smz1); ctx.lineTo(smx, smz2); ctx.stroke();
+
+  // Existing robots (yellow dots with label)
+  for (let i = 0; i < robots.length; i++) {
+    const r = robots[i];
+    const rx = r.baseState.x;
+    const rz = r.baseState.z;
+    const [mx, mz] = toMap(rx, rz);
+    // Glow
+    ctx.beginPath();
+    ctx.arc(mx, mz, 8, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,204,0,0.15)';
+    ctx.fill();
+    // Dot
+    ctx.beginPath();
+    ctx.arc(mx, mz, 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffcc00';
+    ctx.fill();
+    // Label
+    ctx.fillStyle = 'rgba(255,204,0,0.7)';
+    ctx.font = `${Math.max(9, 10 * (scale / 5))}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillText(`R${i + 1}`, mx, mz - 9);
+  }
+
+  // Selected deployment position (green crosshair with pulse)
+  const [dx, dz] = toMap(_rcDeployX, _rcDeployZ);
+  const pulse = 0.6 + 0.4 * Math.sin(Date.now() / 300);
+  // Outer ring
+  ctx.beginPath();
+  ctx.arc(dx, dz, 12 * pulse, 0, Math.PI * 2);
+  ctx.strokeStyle = `rgba(0,255,136,${0.3 * pulse})`;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  // Inner ring
+  ctx.beginPath();
+  ctx.arc(dx, dz, 6, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(0,255,136,0.7)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  // Cross
+  ctx.strokeStyle = 'rgba(0,255,136,0.8)';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(dx - 10, dz); ctx.lineTo(dx + 10, dz); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(dx, dz - 10); ctx.lineTo(dx, dz + 10); ctx.stroke();
+  // Center dot
+  ctx.beginPath();
+  ctx.arc(dx, dz, 2.5, 0, Math.PI * 2);
+  ctx.fillStyle = '#00ff88';
+  ctx.fill();
+  // Label
+  ctx.fillStyle = '#00ff88';
+  ctx.font = `${Math.max(9, 10 * (scale / 5))}px monospace`;
+  ctx.textAlign = 'center';
+  ctx.fillText('NEW', dx, dz - 16);
+
+  // Animate the pulse
+  if (_rcOpen) requestAnimationFrame(drawMiniFactoryMap);
+}
+
+// Click on map to select position
+if (_rcMapCanvas) {
+  _rcMapCanvas.addEventListener('click', e => {
+    const rect = _rcMapCanvas.getBoundingClientRect();
+    const mx = (e.clientX - rect.left) * (_rcMapCanvas.width / rect.width);
+    const mz = (e.clientY - rect.top) * (_rcMapCanvas.height / rect.height);
+    const W = _rcMapCanvas.width;
+    const H = _rcMapCanvas.height;
+    const scaleX = W / MAP_FW;
+    const scaleZ = H / MAP_FD;
+    const scale = Math.min(scaleX, scaleZ) * 0.88;
+    _rcDeployX = (mx - W / 2) / scale;
+    _rcDeployZ = (mz - H / 2) / scale;
+    // Clamp inside factory
+    _rcDeployX = Math.max(-28, Math.min(28, _rcDeployX));
+    _rcDeployZ = Math.max(-28, Math.min(28, _rcDeployZ));
+    _rcMapCoords.textContent = `X: ${_rcDeployX.toFixed(1)}  Z: ${_rcDeployZ.toFixed(1)}`;
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+//  ROBOT PREVIEW — Three.js mini renderer
+// ═══════════════════════════════════════════════════════
+function initRobotPreview() {
+  if (!_rcPrevCanvas) return;
+  const rect = _rcPrevCanvas.parentElement.getBoundingClientRect();
+  const pw = Math.floor(rect.width);
+  const ph = 200;
+  _rcPrevCanvas.width = pw * (window.devicePixelRatio > 1 ? 1.5 : 1);
+  _rcPrevCanvas.height = ph * (window.devicePixelRatio > 1 ? 1.5 : 1);
+  _rcPrevCanvas.style.width = pw + 'px';
+  _rcPrevCanvas.style.height = ph + 'px';
+
+  // Create mini renderer
+  _rcPreviewRenderer = new THREE.WebGLRenderer({
+    canvas: _rcPrevCanvas,
+    antialias: true,
+    alpha: true,
+    preserveDrawingBuffer: true
+  });
+  _rcPreviewRenderer.setSize(_rcPrevCanvas.width, _rcPrevCanvas.height, false);
+  _rcPreviewRenderer.setClearColor(0x060a10, 1);
+
+  // Mini scene
+  _rcPreviewScene = new THREE.Scene();
+  _rcPreviewScene.add(new THREE.AmbientLight(0xffffff, 1.5));
+  const dLight = new THREE.DirectionalLight(0xfff0d8, 2.0);
+  dLight.position.set(3, 6, 4);
+  _rcPreviewScene.add(dLight);
+  const pLight = new THREE.PointLight(0xffd8a0, 1.0, 15);
+  pLight.position.set(-3, 4, -2);
+  _rcPreviewScene.add(pLight);
+
+  // Camera
+  _rcPreviewCamera = new THREE.PerspectiveCamera(40, _rcPrevCanvas.width / _rcPrevCanvas.height, 0.1, 50);
+  _rcPreviewCamera.position.set(3, 3, 4.5);
+  _rcPreviewCamera.lookAt(0, 1.2, 0);
+
+  // Grid floor
+  const gridHelper = new THREE.GridHelper(6, 12, 0x1a2030, 0x111825);
+  _rcPreviewScene.add(gridHelper);
+
+  buildPreviewRobot();
+  animatePreview();
+}
+
+function buildPreviewRobot() {
+  if (!_rcPreviewScene) return;
+  // Remove old
+  if (_rcPreviewGroup) {
+    _rcPreviewScene.remove(_rcPreviewGroup);
+    _rcPreviewGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); } });
+  }
+
+  _rcPreviewGroup = new THREE.Group();
+  const armColor = _rcSelectedColor;
+  const isCobot = _rcType?.value === 'cobot';
+  const armLen = (_rcArmLen?.value || 150) / 100;
+
+  const bodyColor = isCobot ? 0xBFC5CC : 0x4B5563;
+  const accentColor = isCobot ? 0x2C7AB5 : armColor;
+
+  // Materials
+  const matBody = new THREE.MeshStandardMaterial({ color: bodyColor, metalness: 0.7, roughness: 0.4 });
+  const matArm = new THREE.MeshStandardMaterial({ color: armColor, metalness: 0.75, roughness: 0.35 });
+  const matAccent = new THREE.MeshStandardMaterial({ color: accentColor, metalness: 0.7, roughness: 0.35 });
+  const matJoint = new THREE.MeshStandardMaterial({ color: 0x6B7280, metalness: 0.8, roughness: 0.3 });
+  const matFinger = new THREE.MeshStandardMaterial({ color: 0x9CA3AF, metalness: 0.8, roughness: 0.3 });
+  const matTrack = new THREE.MeshStandardMaterial({ color: 0x3a3632, metalness: 0.15, roughness: 0.85 });
+
+  // Tracks
+  const trackW = 0.16, trackH = 0.24, trackL = 0.95, bodyW = 0.6;
+  for (const side of [-1, 1]) {
+    const track = new THREE.Mesh(new THREE.BoxGeometry(trackW, trackH, trackL), matTrack);
+    track.position.set(side * (bodyW / 2 + trackW / 2), trackH / 2, 0);
+    _rcPreviewGroup.add(track);
+  }
+
+  // Chassis
+  const bodyH = 0.14;
+  const chassis = new THREE.Mesh(new THREE.BoxGeometry(bodyW, bodyH, 0.8), matBody);
+  chassis.position.y = trackH + bodyH / 2;
+  _rcPreviewGroup.add(chassis);
+
+  // Turret
+  const turretR = 0.28, turretH = 0.14;
+  const turret = new THREE.Mesh(new THREE.CylinderGeometry(turretR, turretR + 0.05, turretH, 24), matBody);
+  turret.position.y = trackH + bodyH + turretH / 2;
+  _rcPreviewGroup.add(turret);
+
+  // Turret ring
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(turretR + 0.01, 0.02, 12, 24), matJoint);
+  ring.rotation.x = Math.PI / 2;
+  ring.position.y = trackH + bodyH + 0.02;
+  _rcPreviewGroup.add(ring);
+
+  // Turret top accent
+  const tTop = new THREE.Mesh(new THREE.CylinderGeometry(turretR - 0.03, turretR, 0.04, 24), matAccent);
+  tTop.position.y = trackH + bodyH + turretH - 0.01;
+  _rcPreviewGroup.add(tTop);
+
+  // Status light for cobot
+  if (isCobot) {
+    const sMat = new THREE.MeshStandardMaterial({ color: accentColor, emissive: accentColor, emissiveIntensity: 1.0 });
+    const sLight = new THREE.Mesh(new THREE.SphereGeometry(turretR * 0.5, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), sMat);
+    sLight.position.y = trackH + bodyH + turretH + 0.005;
+    _rcPreviewGroup.add(sLight);
+  }
+
+  const baseOff = trackH + bodyH + turretH;
+
+  // Shoulder
+  const shoulderW = 0.26;
+  const shoulderLen = armLen;
+  const shoulderPivot = new THREE.Group();
+  shoulderPivot.position.y = baseOff;
+
+  const shoulderMesh = new THREE.Group();
+  shoulderMesh.position.y = shoulderLen / 2;
+
+  const shoulderBody = new THREE.Mesh(
+    new THREE.CylinderGeometry(shoulderW * 0.6, shoulderW * 0.7, shoulderLen - shoulderW, 24), matArm
+  );
+  shoulderMesh.add(shoulderBody);
+
+  // Shoulder joint
+  const sJoint = new THREE.Mesh(
+    new THREE.CylinderGeometry(shoulderW * 0.6, shoulderW * 0.6, shoulderW * 1.2, 24), matJoint
+  );
+  sJoint.rotation.z = Math.PI / 2;
+  sJoint.position.y = -shoulderLen / 2;
+  shoulderMesh.add(sJoint);
+
+  // Shoulder accent caps
+  for (const d of [1, -1]) {
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(shoulderW * 0.65, shoulderW * 0.65, 0.04, 24), matAccent);
+    cap.rotation.z = Math.PI / 2;
+    cap.position.set(d * (shoulderW * 0.6 + 0.02), -shoulderLen / 2, 0);
+    shoulderMesh.add(cap);
+  }
+
+  shoulderPivot.add(shoulderMesh);
+  shoulderPivot.rotation.x = THREE.MathUtils.degToRad(25);  // Slight pose
+  _rcPreviewGroup.add(shoulderPivot);
+
+  // Elbow
+  const elbowW = 0.22;
+  const elbowLen = armLen * 0.63;
+  const elbowPivot = new THREE.Group();
+  elbowPivot.position.y = shoulderLen / 2;
+
+  const elbowMesh = new THREE.Group();
+  elbowMesh.position.y = elbowLen / 2;
+
+  const elbowBody = new THREE.Mesh(
+    new THREE.CylinderGeometry(elbowW * 0.5, elbowW * 0.6, elbowLen - elbowW, 24), matArm
+  );
+  elbowMesh.add(elbowBody);
+
+  const eJoint = new THREE.Mesh(
+    new THREE.CylinderGeometry(elbowW * 0.55, elbowW * 0.55, elbowW * 1.1, 24), matJoint
+  );
+  eJoint.rotation.z = Math.PI / 2;
+  eJoint.position.y = -elbowLen / 2;
+  elbowMesh.add(eJoint);
+
+  for (const d of [1, -1]) {
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(elbowW * 0.6, elbowW * 0.6, 0.03, 24), matAccent);
+    cap.rotation.z = Math.PI / 2;
+    cap.position.set(d * (elbowW * 0.55 + 0.015), -elbowLen / 2, 0);
+    elbowMesh.add(cap);
+  }
+
+  elbowPivot.add(elbowMesh);
+  elbowPivot.rotation.x = THREE.MathUtils.degToRad(-40);  // Slight pose
+  shoulderMesh.add(elbowPivot);
+
+  // Wrist
+  const wr = 0.12, wh = 0.12;
+  const wristPivot = new THREE.Group();
+  wristPivot.position.y = elbowLen / 2;
+  const wristMesh = new THREE.Mesh(new THREE.CylinderGeometry(wr, wr * 1.1, wh, 24), matJoint);
+  wristPivot.add(wristMesh);
+  elbowMesh.add(wristPivot);
+
+  // Gripper / fingers
+  const palmGroup = new THREE.Group();
+  palmGroup.position.y = 0.1;
+  wristPivot.add(palmGroup);
+
+  const palm = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.08, 0.24), matJoint);
+  palmGroup.add(palm);
+
+  const gripBase = new THREE.Mesh(new THREE.BoxGeometry(0.42 * 1.02, 0.08 * 1.4, 0.24 * 0.8), matJoint);
+  gripBase.position.y = 0.04;
+  palmGroup.add(gripBase);
+
+  // Fingers
+  for (const side of [-1, 1]) {
+    const finger = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.40, 0.16), matFinger);
+    finger.position.set(side * 0.22, 0.24, 0);
+    palmGroup.add(finger);
+    // Rubber pads
+    const pad = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.30, 0.12),
+      new THREE.MeshStandardMaterial({ color: 0x4A4540, metalness: 0.1, roughness: 0.9 }));
+    pad.position.set(side * (-0.03), 0.02, 0);
+    finger.add(pad);
+  }
+
+  _rcPreviewScene.add(_rcPreviewGroup);
+}
+
+function updateRobotPreview() {
+  buildPreviewRobot();
+}
+
+function animatePreview() {
+  if (!_rcOpen || !_rcPreviewRenderer) return;
+  _rcPreviewAnimId = requestAnimationFrame(animatePreview);
+  if (_rcPreviewGroup) {
+    _rcPreviewGroup.rotation.y += 0.008;
+  }
+  _rcPreviewRenderer.render(_rcPreviewScene, _rcPreviewCamera);
+}
+
+function stopRobotPreview() {
+  if (_rcPreviewAnimId) {
+    cancelAnimationFrame(_rcPreviewAnimId);
+    _rcPreviewAnimId = null;
+  }
+  if (_rcPreviewRenderer) {
+    _rcPreviewRenderer.dispose();
+    _rcPreviewRenderer = null;
+  }
+  if (_rcPreviewScene) {
+    _rcPreviewScene.traverse(o => {
+      if (o.geometry) o.geometry.dispose();
+      if (o.material) {
+        if (o.material.map) o.material.map.dispose();
+        o.material.dispose();
+      }
+    });
+    _rcPreviewScene = null;
+  }
+  _rcPreviewGroup = null;
+  _rcPreviewCamera = null;
+}
+
+// ═══════════════════════════════════════════════════════
+//  DEPLOY ROBOT — Creates a new Robot3D instance
+// ═══════════════════════════════════════════════════════
+document.getElementById('btnDeployRobot')?.addEventListener('click', () => {
+  const robotName = _rcName.value.trim() || `Robot ${robots.length + 1}`;
+  const robotType = _rcType.value;
+  const armColor = _rcSelectedColor;
+  const armLen = (_rcArmLen.value || 150) / 100;
+  const speed = (_rcSpeed.value || 20) / 10;
+  const gripForce = parseInt(_rcGrip.value) || 1200;
+  const deployX = _rcDeployX;
+  const deployZ = _rcDeployZ;
+
+  // Build color variants
+  const darkerColor = darkenHexColor(armColor, 0.85);
+  const accentColor = robotType === 'cobot' ? 0x2C7AB5 : armColor;
+  const bodyColor = robotType === 'cobot' ? 0xBFC5CC : 0x5C6370;
+
+  // Create description overrides
+  const overrides = {
+    type: robotType,
+    arm: {
+      shoulder: { color: armColor, len: armLen },
+      elbow: { color: darkerColor, len: armLen * 0.63 },
+      palm: { color: 0x78818C },
+    },
+    base: {
+      body: { color: bodyColor },
+      accentColor: accentColor,
+    },
+    finger: { color: 0xA0A8B0 },
+    movement: { speed: speed },
+    grip: { maxForce: gripForce },
+  };
+
+  // Create the new robot
+  const newRobot = new Robot3D(makeDescription(overrides), ctx);
+  newRobot.setPosition(deployX, deployZ);
+
+  // Add to robots array
+  robots.push(newRobot);
+
+  // Add metadata
+  const colorHex = '#' + (armColor & 0xFFFFFF).toString(16).padStart(6, '0');
+  ROBOT_META.push({
+    name: robotName,
+    type: robotType === 'cobot' ? 'Cobot' : 'Industrial',
+    color: colorHex,
+  });
+
+  // Create FingerSensors for the new robot
+  allFingerSensors.push({
+    left: new FingerSensor('left',
+      newRobot.parts.fingers.left.group.children[0],
+      newRobot.parts.fingers.left.body,
+      newRobot.description,
+      { robot: robotApi, logger: log }),
+    right: new FingerSensor('right',
+      newRobot.parts.fingers.right.group.children[0],
+      newRobot.parts.fingers.right.body,
+      newRobot.description,
+      { robot: robotApi, logger: log }),
+  });
+
+  // Switch to the new robot
+  const prev = getActive();
+  prev.setDrive(0, 0);
+  if (!grabbed) prev.setSqueeze(0);
+  activeIdx = robots.length - 1;
+  robotApi.setRobot3D(newRobot);
+  syncSlidersToActive();
+  updateActiveBadge();
+
+  // Log
+  log(`🤖 Deployed "${robotName}" at (${deployX.toFixed(1)}, ${deployZ.toFixed(1)})`, 'ok');
+  console.log(`[RobotCreator] Deployed ${robotName} — type=${robotType}, color=0x${armColor.toString(16)}, pos=(${deployX.toFixed(1)}, ${deployZ.toFixed(1)})`);
+
+  closeRobotCreator();
+});
+
+// Utility: darken a hex color value
+function darkenHexColor(hex, factor) {
+  const r = ((hex >> 16) & 0xFF) * factor;
+  const g = ((hex >> 8) & 0xFF) * factor;
+  const b = (hex & 0xFF) * factor;
+  return (Math.round(r) << 16) | (Math.round(g) << 8) | Math.round(b);
+}
+
 
 window.addEventListener('resize', () => {
   if (_xrSess) return;

@@ -162,9 +162,9 @@ export class VRControllerManager {
       this._haptic('right', 0.3, 40);
     }
 
-    // ── A button (btn 4) → reset joints ──
+    // ── A button (btn 4) → Open Robot Creator ──
     if (this._rising('right', 4, gp.buttons[4])) {
-      this.cb.resetJoints();
+      if (this.cb.openCreatorUI) this.cb.openCreatorUI();
       this._haptic('right', 0.4, 60);
     }
 

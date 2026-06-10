@@ -133,27 +133,30 @@ export class VRUI {
   }
 
   _defineButtons() {
-    const bw = (CW - PAD * 2 - 16) / 2;
-    let y = 400;
+    const bw3 = (CW - PAD * 2 - 20) / 3;
+    let y = 390;
     const btns = [
-      { id: 'grab',    label: '✊ GRAB',    x: PAD, y, w: bw, h: BTN_H, color: C.btnGrab,    view: 'main', action: () => this.cb.grab() },
-      { id: 'release', label: '🤚 RELEASE', x: PAD + bw + 16, y, w: bw, h: BTN_H, color: C.btnRelease, view: 'main', action: () => this.cb.release() },
+      { id: 'grab',    label: '✊ GRAB',    x: PAD, y, w: bw3, h: BTN_H, color: C.btnGrab,    view: 'main', action: () => this.cb.grab() },
+      { id: 'release', label: '🤚 RELEASE', x: PAD + bw3 + 10, y, w: bw3, h: BTN_H, color: C.btnRelease, view: 'main', action: () => this.cb.release() },
+      { id: 'reset',   label: '🔄 RESET',   x: PAD + bw3*2 + 20, y, w: bw3, h: BTN_H, color: C.btnReset,  view: 'main', action: () => this.cb.resetJoints() },
     ];
     y += BTN_GAP;
     btns.push(
-      { id: 'reset',  label: '🔄 RESET',   x: PAD, y, w: bw, h: BTN_H, color: C.btnReset,  view: 'main', action: () => this.cb.resetJoints() },
-      { id: 'switch', label: '🤖 ROBOTS',  x: PAD + bw + 16, y, w: bw, h: BTN_H, color: C.btnSwitch, view: 'main', action: () => { this._view = 'robots'; } },
+      { id: 'switch', label: '🤖 ROBOTS',  x: PAD, y, w: bw3, h: BTN_H, color: C.btnSwitch, view: 'main', action: () => { this._view = 'robots'; } },
+      { id: 'camera', label: '📷 VISION',  x: PAD + bw3 + 10, y, w: bw3, h: BTN_H, color: C.btnReset, view: 'main', action: () => { this._view = 'camera'; } },
+      { id: 'create', label: '➕ CREATE',  x: PAD + bw3*2 + 20, y, w: bw3, h: BTN_H, color: 'rgba(255,204,0,0.25)', view: 'main', action: () => { this._view = 'create'; if (this.cb.openCreator) this.cb.openCreator(); } }
     );
     y += BTN_GAP;
     btns.push(
-      { id: 'camera', label: '📷 VISION', x: PAD, y, w: bw, h: BTN_H, color: C.btnReset, view: 'main', action: () => { this._view = 'camera'; } },
-      { id: 'exit',  label: '🚪 EXIT VR',    x: PAD + bw + 16, y, w: bw, h: BTN_H, color: '#aa3333', view: 'main', action: () => { if (this.cb.exitXR) this.cb.exitXR(); } }
+      { id: 'exit',  label: '🚪 EXIT VR',  x: PAD, y, w: CW - PAD * 2, h: 32, color: '#aa3333', view: 'main', action: () => { if (this.cb.exitXR) this.cb.exitXR(); } }
     );
 
-    // Stats & Robots view back buttons
+    // Back buttons
     btns.push(
       { id: 'back_camera', label: '◀ BACK', x: PAD, y: 76, w: 100, h: BTN_H, color: C.btnBg, view: 'camera', action: () => { this._view = 'main'; } },
-      { id: 'back_robots', label: '◀ BACK', x: PAD, y: 76, w: 100, h: BTN_H, color: C.btnBg, view: 'robots', action: () => { this._view = 'main'; } }
+      { id: 'back_robots', label: '◀ BACK', x: PAD, y: 76, w: 100, h: BTN_H, color: C.btnBg, view: 'robots', action: () => { this._view = 'main'; } },
+      { id: 'back_create', label: '◀ BACK', x: PAD, y: 76, w: 100, h: BTN_H, color: C.btnBg, view: 'create', action: () => { this._view = 'main'; if(this.cb.closeCreator) this.cb.closeCreator(); } },
+      { id: 'deploy_robot', label: '⚡ DEPLOY', x: CW - PAD - 120, y: 76, w: 120, h: BTN_H, color: 'rgba(255,204,0,0.3)', view: 'create', action: () => { if(this.cb.deployCreator) this.cb.deployCreator(); this._view = 'main'; } }
     );
 
     return btns;
@@ -388,6 +391,42 @@ export class VRUI {
       }
     }
 
+    // Check create view interactions (Type, Color, Map)
+    if (this._view === 'create') {
+      // Type
+      if (x >= PAD && x <= CW/2 - 5 && y >= 140 && y <= 180) {
+        this._hoveredEl = 'type_ind';
+        if (triggerPressed && this.cb.setCreatorType) this.cb.setCreatorType('industrial');
+      }
+      if (x >= CW/2 + 5 && x <= CW - PAD && y >= 140 && y <= 180) {
+        this._hoveredEl = 'type_cob';
+        if (triggerPressed && this.cb.setCreatorType) this.cb.setCreatorType('cobot');
+      }
+      // Colors
+      const cSize = 40;
+      const cGap = (CW - PAD*2 - cSize*6) / 5;
+      for (let i = 0; i < 6; i++) {
+        const cx = PAD + i * (cSize + cGap);
+        if (x >= cx && x <= cx + cSize && y >= 210 && y <= 250) {
+          this._hoveredEl = 'col_' + i;
+          if (triggerPressed && this.cb.setCreatorColor) {
+             const colors = [0xF7931E, 0xCC2936, 0xE8B931, 0x2C7AB5, 0x44BB88, 0x9955CC];
+             this.cb.setCreatorColor(colors[i]);
+          }
+        }
+      }
+      // Map
+      const mapY = 490;
+      const mapH = 180;
+      if (x >= PAD && x <= CW - PAD && y >= mapY && y <= mapY + mapH) {
+         if (triggerPressed && this.cb.setCreatorMapPos) {
+           const u = (x - PAD) / (CW - PAD*2);
+           const v = (y - mapY) / mapH;
+           this.cb.setCreatorMapPos(u, v);
+         }
+      }
+    }
+
     // Check buttons
     for (const b of this._buttons) {
       if (b.view && b.view !== this._view) continue;
@@ -448,6 +487,8 @@ export class VRUI {
       this._drawCameraVision(ctx);
     } else if (this._view === 'robots') {
       this._drawRobots(ctx);
+    } else if (this._view === 'create') {
+      this._drawCreator(ctx);
     }
 
     // ── Buttons ──
@@ -534,7 +575,7 @@ export class VRUI {
   }
 
   _drawTelemetry(ctx, active) {
-    const y0 = 540; // Shifted down to make room for EXIT button
+    const y0 = 590; // Shifted down to make room for EXIT button
     ctx.strokeStyle = 'rgba(255,204,0,0.15)';
     ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(PAD, y0); ctx.lineTo(CW - PAD, y0); ctx.stroke();
@@ -595,7 +636,7 @@ export class VRUI {
     ctx.fillStyle = C.textDim;
     ctx.font = '9px "Share Tech Mono", monospace';
     ctx.fillText('R-STICK: JOINTS · L-STICK: DRIVE · CLICK STICK: MODE', CW / 2, ty + 28);
-    ctx.fillText('A: RESET · B: TOGGLE PANEL · SQUEEZE R: GRIP', CW / 2, ty + 42);
+    ctx.fillText('A: CREATE · B: TOGGLE PANEL · SQUEEZE R: GRIP', CW / 2, ty + 42);
   }
 
   _drawCameraVision(ctx) {
@@ -722,6 +763,101 @@ export class VRUI {
       ctx.fillText(statusTxt, CW - PAD - 14, ty + 28);
       
       ty += 56;
+    }
+  }
+
+  _drawCreator(ctx) {
+    let ty = 130;
+    
+    const state = this.cb.getCreatorState?.();
+    if (!state) return;
+
+    // Type toggles
+    ctx.fillStyle = C.textDim;
+    ctx.font = '10px "Share Tech Mono", monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('ROBOT TYPE', PAD, ty);
+    ty += 10;
+    
+    const isInd = state.type === 'industrial';
+    const isCob = state.type === 'cobot';
+    
+    // Industrial btn
+    this._roundRect(PAD, ty, CW/2 - PAD - 5, 40, 6, isInd ? 'rgba(255,204,0,0.2)' : C.btnBg);
+    if (this._hoveredEl === 'type_ind') ctx.fillStyle = '#fff'; else ctx.fillStyle = isInd ? C.accent : C.text;
+    ctx.font = 'bold 14px Rajdhani';
+    ctx.textAlign = 'center';
+    ctx.fillText('🏭 INDUSTRIAL', PAD + (CW/2 - PAD - 5)/2, ty + 25);
+    
+    // Cobot btn
+    this._roundRect(CW/2 + 5, ty, CW/2 - PAD - 5, 40, 6, isCob ? 'rgba(44, 122, 181, 0.4)' : C.btnBg);
+    if (this._hoveredEl === 'type_cob') ctx.fillStyle = '#fff'; else ctx.fillStyle = isCob ? '#4D9EE0' : C.text;
+    ctx.fillText('🤝 COBOT', CW/2 + 5 + (CW/2 - PAD - 5)/2, ty + 25);
+    
+    ty += 60;
+    
+    // Colors
+    ctx.fillStyle = C.textDim;
+    ctx.font = '10px "Share Tech Mono", monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('ARM COLOR', PAD, ty);
+    ty += 10;
+    
+    const colors = [0xF7931E, 0xCC2936, 0xE8B931, 0x2C7AB5, 0x44BB88, 0x9955CC];
+    const cSize = 40;
+    const cGap = (CW - PAD*2 - cSize*6) / 5;
+    for (let i = 0; i < 6; i++) {
+      const cx = PAD + i * (cSize + cGap);
+      const hexStr = '#' + colors[i].toString(16).padStart(6, '0');
+      ctx.fillStyle = hexStr;
+      this._roundRect(cx, ty, cSize, cSize, 4, hexStr);
+      
+      if (state.color === colors[i]) {
+        ctx.strokeStyle = C.accent;
+        ctx.lineWidth = 3;
+        this._roundRectStroke(cx, ty, cSize, cSize, 4);
+      } else if (this._hoveredEl === 'col_' + i) {
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        this._roundRectStroke(cx, ty, cSize, cSize, 4);
+      }
+    }
+    
+    ty += 60;
+    
+    // Preview
+    ctx.fillStyle = C.textDim;
+    ctx.textAlign = 'left';
+    ctx.fillText('3D PREVIEW', PAD, ty);
+    ty += 10;
+    
+    if (state.prevCanvas) {
+      const pW = CW - PAD*2;
+      const pH = 180;
+      // fill background
+      ctx.fillStyle = '#060a10';
+      ctx.fillRect(PAD, ty, pW, pH);
+      ctx.drawImage(state.prevCanvas, PAD, ty, pW, pH);
+      ctx.strokeStyle = 'rgba(255,204,0,0.3)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(PAD, ty, pW, pH);
+    }
+    
+    ty += 200;
+    
+    // Map
+    ctx.fillStyle = C.textDim;
+    ctx.fillText('DEPLOYMENT MAP (CLICK TO PLACE)', PAD, ty);
+    ty += 10;
+    
+    if (state.mapCanvas) {
+      const mW = CW - PAD*2;
+      const mH = 180;
+      ctx.fillRect(PAD, ty, mW, mH);
+      ctx.drawImage(state.mapCanvas, PAD, ty, mW, mH);
+      ctx.strokeStyle = 'rgba(255,204,0,0.3)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(PAD, ty, mW, mH);
     }
   }
 

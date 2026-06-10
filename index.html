@@ -558,6 +558,342 @@
       text-transform: uppercase;
     }
 
+    /* ── ROBOT CREATOR MODAL ── */
+    #robotCreatorOverlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      z-index: 6000;
+      background: rgba(0, 0, 0, 0.62);
+      backdrop-filter: blur(8px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      animation: rcFadeIn 0.2s ease;
+    }
+    #robotCreatorOverlay.visible { display: flex; }
+
+    @keyframes rcFadeIn {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+    @keyframes rcSlideUp {
+      from { transform: translateY(24px) scale(0.95); opacity: 0; }
+      to   { transform: translateY(0) scale(1); opacity: 1; }
+    }
+
+    #robotCreatorPanel {
+      width: 720px;
+      max-width: 95vw;
+      max-height: 92vh;
+      overflow-y: auto;
+      background: rgba(10, 14, 22, 0.96);
+      border: 1px solid rgba(255, 204, 0, 0.30);
+      border-radius: 8px;
+      backdrop-filter: blur(28px);
+      box-shadow: 0 16px 60px rgba(0, 0, 0, 0.8), 0 0 2px rgba(255,204,0,0.25);
+      animation: rcSlideUp 0.25s ease;
+    }
+
+    #rcHeader {
+      padding: 14px 20px 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid rgba(255, 204, 0, 0.25);
+      background: rgba(8, 10, 16, 0.7);
+      border-radius: 8px 8px 0 0;
+      position: relative;
+    }
+    #rcHeader::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--c-yellow), transparent);
+      opacity: 0.6;
+      border-radius: 8px 8px 0 0;
+    }
+
+    .rc-title {
+      font-family: var(--f-mono);
+      font-size: 13px;
+      letter-spacing: 4px;
+      color: var(--c-yellow);
+      text-transform: uppercase;
+      font-weight: 700;
+    }
+    #btnCloseCreator {
+      background: none;
+      border: 1px solid rgba(204, 51, 34, 0.5);
+      color: var(--c-red);
+      width: 24px; height: 24px;
+      cursor: pointer;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+      transition: background 0.15s;
+    }
+    #btnCloseCreator:hover { background: rgba(204, 51, 34, 0.2); }
+
+    #rcBody {
+      display: flex;
+      gap: 16px;
+      padding: 16px;
+    }
+
+    /* Left config column */
+    .rc-config {
+      flex: 0 0 240px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .rc-field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .rc-label {
+      font-family: var(--f-mono);
+      font-size: 9px;
+      letter-spacing: 2px;
+      color: var(--txt-label);
+      text-transform: uppercase;
+    }
+
+    .rc-input {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.10);
+      color: var(--txt);
+      font-family: var(--f-ui);
+      font-size: 12px;
+      padding: 7px 10px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .rc-input:focus {
+      border-color: rgba(255,204,0,0.40);
+    }
+
+    .rc-select {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.10);
+      color: var(--txt);
+      font-family: var(--f-ui);
+      font-size: 12px;
+      padding: 7px 10px;
+      outline: none;
+      cursor: pointer;
+      -webkit-appearance: none;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%237a8a9a'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      padding-right: 28px;
+    }
+    .rc-select:focus {
+      border-color: rgba(255,204,0,0.40);
+    }
+    .rc-select option {
+      background: #0d1014;
+      color: var(--txt);
+    }
+
+    /* Color swatches */
+    .rc-colors {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .rc-color-btn {
+      width: 28px; height: 28px;
+      border-radius: 4px;
+      border: 2px solid rgba(255,255,255,0.10);
+      cursor: pointer;
+      transition: all 0.15s;
+      position: relative;
+    }
+    .rc-color-btn:hover {
+      border-color: rgba(255,255,255,0.35);
+      transform: scale(1.1);
+    }
+    .rc-color-btn.selected {
+      border-color: var(--c-yellow);
+      box-shadow: 0 0 8px rgba(255,204,0,0.35);
+    }
+    .rc-color-btn.selected::after {
+      content: '✓';
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 14px;
+      color: #fff;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.7);
+    }
+    .rc-color-label {
+      font-family: var(--f-mono);
+      font-size: 7px;
+      color: var(--txt-dim);
+      text-align: center;
+      margin-top: 2px;
+      letter-spacing: 1px;
+    }
+
+    /* Right preview column */
+    .rc-preview {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .rc-preview-box {
+      background: rgba(5, 8, 14, 0.9);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 4px;
+      overflow: hidden;
+      position: relative;
+    }
+    .rc-preview-label {
+      position: absolute;
+      top: 6px; left: 8px;
+      font-family: var(--f-mono);
+      font-size: 8px;
+      letter-spacing: 2px;
+      color: rgba(255,204,0,0.5);
+      text-transform: uppercase;
+      z-index: 2;
+    }
+    #rcPreviewCanvas {
+      display: block;
+      width: 100%;
+      height: 200px;
+      background: #060a10;
+    }
+
+    .rc-map-box {
+      background: rgba(5, 8, 14, 0.9);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 4px;
+      overflow: hidden;
+      position: relative;
+      cursor: crosshair;
+    }
+    #rcMapCanvas {
+      display: block;
+      width: 100%;
+      height: 180px;
+      background: #060a10;
+    }
+    .rc-map-coords {
+      position: absolute;
+      bottom: 6px; right: 8px;
+      font-family: var(--f-mono);
+      font-size: 9px;
+      color: var(--c-yellow);
+      letter-spacing: 1px;
+      background: rgba(0,0,0,0.6);
+      padding: 2px 6px;
+      border-radius: 3px;
+    }
+
+    /* Footer */
+    #rcFooter {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      padding: 12px 20px;
+      border-top: 1px solid rgba(255,255,255,0.08);
+      background: rgba(8, 10, 16, 0.5);
+      border-radius: 0 0 8px 8px;
+    }
+    .rc-btn-cancel {
+      padding: 8px 20px;
+      background: transparent;
+      border: 1px solid rgba(255,255,255,0.15);
+      color: var(--txt-dim);
+      font-family: var(--f-mono);
+      font-size: 11px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      cursor: pointer;
+      border-radius: 4px;
+      transition: all 0.15s;
+    }
+    .rc-btn-cancel:hover {
+      border-color: rgba(255,255,255,0.30);
+      color: var(--txt);
+    }
+    .rc-btn-deploy {
+      padding: 8px 24px;
+      background: linear-gradient(135deg, rgba(255,204,0,0.20), rgba(208,112,32,0.25));
+      border: 1px solid rgba(255,204,0,0.45);
+      color: var(--c-yellow);
+      font-family: var(--f-mono);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      cursor: pointer;
+      border-radius: 4px;
+      transition: all 0.2s;
+      position: relative;
+      overflow: hidden;
+    }
+    .rc-btn-deploy:hover {
+      background: linear-gradient(135deg, rgba(255,204,0,0.30), rgba(208,112,32,0.35));
+      box-shadow: 0 0 16px rgba(255,204,0,0.20);
+      transform: translateY(-1px);
+    }
+    .rc-btn-deploy:active {
+      transform: translateY(0);
+    }
+    .rc-btn-deploy::after {
+      content: '';
+      position: absolute;
+      top: -50%; left: -50%;
+      width: 200%; height: 200%;
+      background: linear-gradient(45deg, transparent 40%, rgba(255,255,255,0.08) 50%, transparent 60%);
+      animation: rcShine 3s infinite;
+    }
+    @keyframes rcShine {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(100%); }
+    }
+
+    .rc-slider-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2px;
+    }
+    .rc-slider-val {
+      font-family: var(--f-mono);
+      font-size: 10px;
+      color: var(--c-yellow);
+      min-width: 32px;
+      text-align: right;
+    }
+
+    /* BTN Create in left panel */
+    .btn-create {
+      border-color: rgba(255,204,0,0.35);
+      color: var(--c-yellow);
+      background: rgba(255,204,0,0.06);
+      text-align: center;
+      font-weight: 700;
+      letter-spacing: 3px;
+    }
+    .btn-create:hover {
+      background: rgba(255,204,0,0.14);
+      border-color: rgba(255,204,0,0.55);
+      box-shadow: 0 0 12px rgba(255,204,0,0.12);
+    }
+
   </style>
 </head>
 <body>
@@ -648,6 +984,14 @@
         </div>
       </div>
 
+      <!-- Create Robot -->
+      <div class="sec">
+        <div class="sec-hd"><span class="dot"></span>Factory</div>
+        <div class="sec-body">
+          <button id="btnCreateRobot" class="btn btn-create">＋ CREATE ROBOT</button>
+        </div>
+      </div>
+
     </div>
   </div>
 
@@ -693,6 +1037,99 @@
       </div>
       <div id="robotPickerFooter">
         <span class="rp-footer-text">Click to switch · Tab to cycle · Esc to close</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════ ROBOT CREATOR MODAL ══════════════════ -->
+  <div id="robotCreatorOverlay">
+    <div id="robotCreatorPanel">
+      <div id="rcHeader">
+        <span class="rc-title">🤖 CREATE NEW ROBOT</span>
+        <button id="btnCloseCreator">✕</button>
+      </div>
+      <div id="rcBody">
+        <!-- LEFT: Configuration -->
+        <div class="rc-config">
+          <div class="rc-field">
+            <span class="rc-label">Robot Name</span>
+            <input id="rcName" class="rc-input" type="text" placeholder="Robot 5" maxlength="20">
+          </div>
+          <div class="rc-field">
+            <span class="rc-label">Robot Type</span>
+            <select id="rcType" class="rc-select">
+              <option value="industrial">🏭 Industrial</option>
+              <option value="cobot">🤝 Cobot (Collaborative)</option>
+            </select>
+          </div>
+          <div class="rc-field">
+            <span class="rc-label">Arm Color</span>
+            <div class="rc-colors" id="rcColors">
+              <div>
+                <div class="rc-color-btn selected" data-color="0xF7931E" style="background:#F7931E;" title="KUKA Orange"></div>
+                <div class="rc-color-label">KUKA</div>
+              </div>
+              <div>
+                <div class="rc-color-btn" data-color="0xCC2936" style="background:#CC2936;" title="ABB Red"></div>
+                <div class="rc-color-label">ABB</div>
+              </div>
+              <div>
+                <div class="rc-color-btn" data-color="0xE8B931" style="background:#E8B931;" title="Fanuc Yellow"></div>
+                <div class="rc-color-label">FANUC</div>
+              </div>
+              <div>
+                <div class="rc-color-btn" data-color="0x2C7AB5" style="background:#2C7AB5;" title="UR Blue"></div>
+                <div class="rc-color-label">UR</div>
+              </div>
+              <div>
+                <div class="rc-color-btn" data-color="0x44BB88" style="background:#44BB88;" title="Green"></div>
+                <div class="rc-color-label">GREEN</div>
+              </div>
+              <div>
+                <div class="rc-color-btn" data-color="0x9955CC" style="background:#9955CC;" title="Purple"></div>
+                <div class="rc-color-label">PURPL</div>
+              </div>
+            </div>
+          </div>
+          <div class="rc-field">
+            <div class="rc-slider-row">
+              <span class="rc-label">Arm Length</span>
+              <span id="rcArmLenVal" class="rc-slider-val">1.5m</span>
+            </div>
+            <input type="range" id="rcArmLen" min="80" max="200" value="150" step="5">
+          </div>
+          <div class="rc-field">
+            <div class="rc-slider-row">
+              <span class="rc-label">Speed</span>
+              <span id="rcSpeedVal" class="rc-slider-val">2.0</span>
+            </div>
+            <input type="range" id="rcSpeed" min="5" max="40" value="20" step="1">
+          </div>
+          <div class="rc-field">
+            <div class="rc-slider-row">
+              <span class="rc-label">Grip Force</span>
+              <span id="rcGripVal" class="rc-slider-val">1200N</span>
+            </div>
+            <input type="range" id="rcGrip" min="200" max="2000" value="1200" step="50">
+          </div>
+        </div>
+
+        <!-- RIGHT: Preview + Map -->
+        <div class="rc-preview">
+          <div class="rc-preview-box">
+            <span class="rc-preview-label">▸ Robot Preview</span>
+            <canvas id="rcPreviewCanvas"></canvas>
+          </div>
+          <div class="rc-map-box">
+            <span class="rc-preview-label">▸ Deployment Location — click to place</span>
+            <canvas id="rcMapCanvas"></canvas>
+            <span id="rcMapCoords" class="rc-map-coords">X: 0.0  Z: 0.0</span>
+          </div>
+        </div>
+      </div>
+      <div id="rcFooter">
+        <button id="btnCancelCreator" class="rc-btn-cancel">Cancel</button>
+        <button id="btnDeployRobot" class="rc-btn-deploy">⚡ Deploy Robot</button>
       </div>
     </div>
   </div>
