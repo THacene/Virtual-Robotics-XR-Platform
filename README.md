@@ -7,6 +7,7 @@ A WebXR-powered robotic arm factory simulation with 4-DOF manipulators, physics-
 ![VR Control](screenshots/camera%20vision.PNG)
 ![VR Control 2](screenshots/vr%20control%202.PNG)
 ![VR Control 3](screenshots/vr%20control%203.PNG)
+![VR Control 3](screenshots/create%20crobot.PNG)
 ![Factory](screenshots/factory.PNG)
 ![Robot](screenshots/robot.PNG)
 ![Vision Camera](screenshots/vision%20camera.PNG)
