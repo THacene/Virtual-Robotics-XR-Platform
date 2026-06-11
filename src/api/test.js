@@ -185,28 +185,42 @@
 
       _elapsed() { return performance.now() - this._phaseAt; }
 
-      _findBlockingObstacle(cx, cz, gx, gz) {
+      _findBlockingObstacle(cx, cz, gx, gz, ignoreId = null) {
         const pathLen = Math.hypot(gx - cx, gz - cz);
-        if (pathLen < 0.5) return null;
-        const CORRIDOR_WIDTH = 2.0;
+        if (pathLen < 0.3) return null;
+        
+        // Use a narrower corridor so we don't get paralyzed when close to obstacles
+        const CORRIDOR_WIDTH = 1.3; 
+        
         let closest = null;
         let closestDist = Infinity;
+
+        const checkObstacle = (id, ox, oz, isBox) => {
+          if (id === ignoreId) return; // Don't get stuck avoiding the same obstacle while already detouring!
+          
+          const d = pointToSegmentDist(ox, oz, cx, cz, gx, gz);
+          const width = isBox ? 0.9 : CORRIDOR_WIDTH;
+          if (d >= width) return;
+          
+          const dx = gx - cx, dz = gz - cz;
+          const len2 = dx * dx + dz * dz;
+          const t = ((ox - cx) * dx + (oz - cz) * dz) / len2;
+          
+          if (t < -0.05 || t > 1.1) return;
+
+          const toObstacle = Math.hypot(ox - cx, oz - cz);
+          if (toObstacle < closestDist) {
+            closestDist = toObstacle;
+            closest = { id, x: ox, z: oz };
+          }
+        };
 
         // Check Robots
         if (window.__robots) {
           for (const r of window.__robots) {
             if (r === this._ar) continue;
             const rPos = r.parts.base.group.position;
-            const d = pointToSegmentDist(rPos.x, rPos.z, cx, cz, gx, gz);
-            if (d >= CORRIDOR_WIDTH) continue;
-            const toObstacle = Math.hypot(rPos.x - cx, rPos.z - cz);
-            const obstacleToGoal = Math.hypot(rPos.x - gx, rPos.z - gz);
-            if (toObstacle < pathLen + 1.0 && obstacleToGoal < pathLen + 1.0) {
-              if (d < closestDist) {
-                closestDist = d;
-                closest = { id: r.description.name || 'robot', x: rPos.x, z: rPos.z };
-              }
-            }
+            checkObstacle(r.description.name || 'robot', rPos.x, rPos.z, false);
           }
         }
 
@@ -216,16 +230,7 @@
           for (const b of window.__boxes) {
             if (b.id === targetId || b.body.position.y > 0.4) continue;
             const bPos = b.body.position;
-            const d = pointToSegmentDist(bPos.x, bPos.z, cx, cz, gx, gz);
-            if (d >= CORRIDOR_WIDTH * 0.7) continue; // smaller corridor for boxes
-            const toObstacle = Math.hypot(bPos.x - cx, bPos.z - cz);
-            const obstacleToGoal = Math.hypot(bPos.x - gx, bPos.z - gz);
-            if (toObstacle < pathLen + 1.0 && obstacleToGoal < pathLen + 1.0) {
-              if (d < closestDist) {
-                closestDist = d;
-                closest = { id: 'box_' + b.id, x: bPos.x, z: bPos.z };
-              }
-            }
+            checkObstacle('box_' + b.id, bPos.x, bPos.z, true);
           }
         }
         return closest;
@@ -236,7 +241,8 @@
         const now = performance.now();
 
         // If waypoints are empty or last waypoint is not finalGoal, reset
-        if (this._waypoints.length === 0 || this._waypoints[this._waypoints.length - 1].x !== finalGoal.x || this._waypoints[this._waypoints.length - 1].z !== finalGoal.z) {
+        const lastWp = this._waypoints.length > 0 ? this._waypoints[this._waypoints.length - 1] : null;
+        if (!lastWp || Math.hypot(lastWp.x - finalGoal.x, lastWp.z - finalGoal.z) > 0.1) {
           this._waypoints = [{ ...finalGoal }];
           this._wpIndex = 0;
         }
@@ -257,7 +263,10 @@
         }
 
         if (now > this._avoidCooldown) {
-          const blocker = this._findBlockingObstacle(base.x, base.z, wp.x, wp.z);
+          // If we are currently heading to a detour, ignore the obstacle we are detouring around
+          const ignoreId = (this._waypoints.length > 1 && this._wpIndex === 0) ? this._avoidingObstacleId : null;
+          const blocker = this._findBlockingObstacle(base.x, base.z, wp.x, wp.z, ignoreId);
+          
           if (blocker) {
             if (this._avoidAttempts >= this._maxAvoidAttempts) {
               if (!this._waitingForClear) {
@@ -272,25 +281,31 @@
                 this._waypoints = [{ ...finalGoal }];
                 this._wpIndex = 0;
               }
-              return false;
+              return false; // Actually stop and wait
             }
-            const detour = computeDetour(base.x, base.z, finalGoal.x, finalGoal.z, blocker.x, blocker.z, 2.5);
+            
+            // Compute detour wider around the obstacle
+            const detour = computeDetour(base.x, base.z, finalGoal.x, finalGoal.z, blocker.x, blocker.z, 2.0);
             if (detour) {
               this._avoidAttempts++;
               this._waypoints = [detour, { ...finalGoal }];
               this._wpIndex = 0;
-              this._avoidCooldown = now + 1000;
+              this._avoidCooldown = now + 400; // Give it 400ms to actually make progress towards detour
+              this._avoidingObstacleId = blocker.id;
+              wp = detour; // IMMEDIATE TURN: update wp so it drives towards detour THIS frame!
               logger(`🔀 Detour computed to avoid ${blocker.id}`, 'info');
-              ar.setDrive(0, 0);
-              return false;
             }
           } else if (this._waypoints.length > 1 && this._wpIndex === 0) {
+            // Check if direct path to goal is clear now
             const directBlocker = this._findBlockingObstacle(base.x, base.z, finalGoal.x, finalGoal.z);
             if (!directBlocker) {
               this._waypoints = [{ ...finalGoal }];
               this._wpIndex = 0;
               this._avoidAttempts = 0;
               this._waitingForClear = false;
+              this._avoidingObstacleId = null;
+              wp = finalGoal; // IMMEDIATE TURN towards goal
+              logger(`✅ Path clear → direct route`, 'info');
             }
           }
         }

@@ -91,9 +91,11 @@ export class HandTrackingController {
 
     // Listen for hand connect / disconnect
     this.handR.addEventListener('connected', (e) => {
+      if (!this._active) return;
       if (e.data?.hand) this._available = true;
     });
     this.handL.addEventListener('connected', (e) => {
+      if (!this._active) return;
       if (e.data?.hand) this._available = true;
     });
     this.handR.addEventListener('disconnected', () => { this._checkAvailable(); });
@@ -106,8 +108,13 @@ export class HandTrackingController {
   }
 
   _checkAvailable() {
+    if (!this._active) {
+      this._available = false;
+      return;
+    }
+
     // Remains available if at least one hand is tracked
-    this._available = (this.handR.children.length > 0 || this.handL.children.length > 0);
+    this._available = Boolean(this.handR?.children?.length || this.handL?.children?.length);
   }
 
   get available() { return this._available; }
@@ -358,7 +365,9 @@ export class HandTrackingController {
     }
 
     const model = side === 'right' ? this._modelR : this._modelL;
+    const handGroup = side === 'right' ? this.handR : this.handL;
     if (!model) return;
+    if (!handGroup) return;
 
     if (!handSource) {
       // Hide all
@@ -382,7 +391,6 @@ export class HandTrackingController {
           pose.transform.position.z
         );
         // Convert to hand-group local space
-        const handGroup = side === 'right' ? this.handR : this.handL;
         handGroup.worldToLocal(p);
         model.spheres[i].position.copy(p);
         model.spheres[i].visible = true;
@@ -427,6 +435,7 @@ export class HandTrackingController {
   // ─────────────────── Cleanup ───────────────────
   dispose() {
     this._active = false;
+    this._available = false;
     if (this.handR) this.xrRig.remove(this.handR);
     if (this.handL) this.xrRig.remove(this.handL);
     this.handR = this.handL = null;

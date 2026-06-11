@@ -1,6 +1,7 @@
 // ============================================================
-//  test.js — Event-Driven Pick & Place (v2.0)
-//
+//  test.js — Event-Driven Pick & Place (v3.0)
+//  ✅ تخطيط مسار A* على شبكة: مسار كامل حول كل العوائق،
+//     إعادة تخطيط دورية للروبوتات المتحركة، متحكم قيادة مجرّب
 // ============================================================
 
 (function () {
@@ -95,24 +96,10 @@
     };
   }
 
-  function driveBaseTo(ar, goal, stopRadius = 0.18) {
-    const base = ar.parts.base.group.position;
-    const dx = goal.x - base.x, dz = goal.z - base.z;
-    const dist = Math.hypot(dx, dz);
-    if (dist < stopRadius) { ar.setDrive(0, 0); return true; }
-    const yawErr = normalizeRad(Math.atan2(dx, dz) - (ar.baseState?.yaw ?? 0));
-    const mv = ar.description.movement;
-    ar.setDrive(
-      Math.abs(yawErr) < 0.35 ? clamp(dist * 0.75, 0.18, mv.speed * 0.55) : 0,
-      Math.abs(yawErr) < 0.04 ? 0 : clamp(yawErr * 1.7, -mv.turn, mv.turn)
-    );
-    return false;
-  }
 
   // ══════════════════════════════════════════════════════════
   //
   //    idle → navigate → approach → closing → lift → carry → place → release → retract → done
-  //
   //
   // ══════════════════════════════════════════════════════════
 
@@ -151,6 +138,12 @@
         this._distReduction = 0;
         this._shoulderBoost = 0;
         this._adaptCooldown = 0;
+
+        // ── A* Path Planning State ───────────────
+        this._path = null;
+        this._pathIdx = 0;
+        this._pathGoal = null;
+        this._plannedAt = 0;
       }
 
       get _ar() { return this.robot._robot3D; }
@@ -165,6 +158,201 @@
       }
 
       _elapsed() { return performance.now() - this._phaseAt; }
+
+      // ══════════════════════════════════════
+      //  جمع كل العوائق (روبوتات + صناديق)
+      // ══════════════════════════════════════
+      _collectObstacles(goal) {
+        const out = [];
+        const add = (id, x, z, radius) => {
+          // العائق الملاصق للهدف = الهدف نفسه (الصندوق المستهدف / نقطة الإسقاط)
+          if (Math.hypot(x - goal.x, z - goal.z) < 0.7) return;
+          out.push({ id, x, z, radius });
+        };
+
+        if (window.__robots) {
+          for (const r of window.__robots) {
+            if (r === this._ar) continue;
+            const p = r.parts.base.group.position;
+            add(r.description.name || 'robot', p.x, p.z, 1.3);
+          }
+        }
+        if (window.__boxes) {
+          const targetId = window.targetBoxId;
+          for (const b of window.__boxes) {
+            if (String(b.id) === String(targetId) || b.body.position.y > 0.4) continue;
+            add('box_' + b.id, b.body.position.x, b.body.position.z, 0.6);
+          }
+        }
+        return out;
+      }
+
+      // ══════════════════════════════════════
+      //  ✅ v3 — A* Grid Path Planner
+      // ══════════════════════════════════════
+      _planPath(ar, goal) {
+        const CELL = 0.5, R = 14;                 // ساحة من -14 إلى +14 متر
+        const N = Math.round((R * 2) / CELL);
+        const blocked = new Uint8Array(N * N);
+        const toCell = v => clamp(Math.round((v + R) / CELL), 0, N - 1);
+
+        // حجب خلايا العوائق (منتفخة بنصف عرض الروبوت)
+        const obstacles = this._collectObstacles(goal);
+        for (const ob of obstacles) {
+          const rad = ob.radius + 0.6;
+          const ci = toCell(ob.x), cj = toCell(ob.z), cr = Math.ceil(rad / CELL);
+          for (let i = ci - cr; i <= ci + cr; i++) {
+            for (let j = cj - cr; j <= cj + cr; j++) {
+              if (i < 0 || j < 0 || i >= N || j >= N) continue;
+              if (Math.hypot(i * CELL - R - ob.x, j * CELL - R - ob.z) < rad) blocked[i * N + j] = 1;
+            }
+          }
+        }
+
+        const base = ar.parts.base.group.position;
+        const si = toCell(base.x), sj = toCell(base.z);
+        const gi = toCell(goal.x), gj = toCell(goal.z);
+
+        // حرّر خلايا البداية والهدف (قد تقع داخل منطقة منتفخة)
+        const free = (ci, cj, r) => {
+          for (let i = ci - r; i <= ci + r; i++)
+            for (let j = cj - r; j <= cj + r; j++)
+              if (i >= 0 && j >= 0 && i < N && j < N) blocked[i * N + j] = 0;
+        };
+        free(si, sj, 1); free(gi, gj, 1);
+
+        // ── A* بثمانية اتجاهات ──
+        const open = [[0, si, sj]];
+        const g = new Float32Array(N * N).fill(Infinity);
+        const parent = new Int32Array(N * N).fill(-1);
+        g[si * N + sj] = 0;
+        let found = false;
+
+        while (open.length) {
+          let bi = 0;
+          for (let k = 1; k < open.length; k++) if (open[k][0] < open[bi][0]) bi = k;
+          const [, ci, cj] = open.splice(bi, 1)[0];
+          if (ci === gi && cj === gj) { found = true; break; }
+          for (let di = -1; di <= 1; di++) {
+            for (let dj = -1; dj <= 1; dj++) {
+              if (!di && !dj) continue;
+              const ni = ci + di, nj = cj + dj;
+              if (ni < 0 || nj < 0 || ni >= N || nj >= N || blocked[ni * N + nj]) continue;
+              const cost = g[ci * N + cj] + Math.hypot(di, dj);
+              if (cost < g[ni * N + nj]) {
+                g[ni * N + nj] = cost;
+                parent[ni * N + nj] = ci * N + cj;
+                open.push([cost + Math.hypot(ni - gi, nj - gj), ni, nj]);
+              }
+            }
+          }
+        }
+        if (!found) return null;
+
+        // استرجاع المسار
+        const cells = [];
+        let cur = gi * N + gj;
+        while (cur !== -1) { cells.push(cur); cur = parent[cur]; }
+        cells.reverse();
+
+        // تبسيط المسار بفحص خط الرؤية
+        const los = (a, b) => {
+          const ai = Math.floor(a / N), aj = a % N;
+          const bi2 = Math.floor(b / N), bj = b % N;
+          const steps = Math.max(Math.abs(bi2 - ai), Math.abs(bj - aj)) * 2;
+          for (let s = 1; s < steps; s++) {
+            const i = Math.round(ai + (bi2 - ai) * s / steps);
+            const j = Math.round(aj + (bj - aj) * s / steps);
+            // ✅ فحص الخلية + 8 جيران → الاختصار يحافظ على مسافة أمان من الزوايا
+            for (let di = -1; di <= 1; di++) {
+              for (let dj = -1; dj <= 1; dj++) {
+                const ii = i + di, jj = j + dj;
+                if (ii >= 0 && jj >= 0 && ii < N && jj < N && blocked[ii * N + jj]) return false;
+              }
+            }
+          }
+          return true;
+        };
+
+
+        const pts = [cells[0]];
+        let a = 0;
+        while (a < cells.length - 1) {
+          let next = a + 1;
+          for (let k = cells.length - 1; k > a; k--) {
+            if (los(cells[a], cells[k])) { next = k; break; }
+          }
+          pts.push(cells[next]); a = next;
+        }
+
+        const path = pts.slice(1).map(c => ({ x: Math.floor(c / N) * CELL - R, z: (c % N) * CELL - R }));
+        if (path.length) path[path.length - 1] = { x: goal.x, z: goal.z };
+        else path.push({ x: goal.x, z: goal.z });
+        return path;
+      }
+
+      // ══════════════════════════════════════
+      //  ✅ v3 — تتبع المسار بمتحكم القيادة الأصلي المجرّب
+      // ══════════════════════════════════════
+      // ══════════════════════════════════════
+//  ✅ v3.1 — تتبع المسار: أسرع + استمرارية بلا توقف
+// ══════════════════════════════════════
+_driveWithDetour(ar, finalGoal, stopRadius = 0.18, speedMult = 1.0) {
+  const base = ar.parts.base.group.position;
+  const now = performance.now();
+
+  const goalDist = Math.hypot(finalGoal.x - base.x, finalGoal.z - base.z);
+  if (goalDist < stopRadius) { ar.setDrive(0, 0); this._path = null; return true; }
+
+  // إعادة التخطيط: كل 2.5 ثانية أو عند تحرك الهدف   ✅ كان 1.5
+  const goalMoved = !this._pathGoal ||
+    Math.hypot(this._pathGoal.x - finalGoal.x, this._pathGoal.z - finalGoal.z) > 0.5;
+  if (!this._path || goalMoved || now - this._plannedAt > 2500) {
+    this._path = this._planPath(ar, finalGoal);
+    this._pathGoal = { x: finalGoal.x, z: finalGoal.z };
+    this._pathIdx = 0;
+    this._plannedAt = now;
+    if (!this._path) {
+      ar.setDrive(0, 0);
+      logger('⏳ No path available — waiting for clearance...', 'warn');
+      return false;
+    }
+    // ✅ تخطَّ النقاط التي نحن عندها أصلاً → لا توقف وانطلاق بعد كل تخطيط
+    while (this._pathIdx < this._path.length - 1 &&
+           Math.hypot(this._path[this._pathIdx].x - base.x,
+                      this._path[this._pathIdx].z - base.z) < 0.6) {
+      this._pathIdx++;
+    }
+  }
+
+  // النقطة الحالية على المسار
+  let wp = this._path[Math.min(this._pathIdx, this._path.length - 1)];
+  const isLast = this._pathIdx >= this._path.length - 1;
+  if (Math.hypot(wp.x - base.x, wp.z - base.z) < (isLast ? stopRadius : 0.45)) {
+    if (!isLast) {
+      this._pathIdx++;
+      wp = this._path[this._pathIdx];
+    } else {
+      ar.setDrive(0, 0); this._path = null; return true;
+    }
+  }
+
+  // ── قيادة أسرع ──   ✅ كان: عتبة 0.4 / ضرب 0.75 / حد 0.18-0.55 / دوران 1.7
+  const targetYaw = Math.atan2(wp.x - base.x, wp.z - base.z);
+  const yawErr = normalizeRad(targetYaw - (ar.baseState?.yaw ?? 0));
+  const mv = ar.description.movement;
+
+  let driveSpeed = 0;
+  if (Math.abs(yawErr) < 0.5) {
+    driveSpeed = clamp(Math.hypot(wp.x - base.x, wp.z - base.z) * 0.8,
+      0.25, mv.speed * 0.75 * speedMult);
+  }
+  const turnSpeed = Math.abs(yawErr) < 0.04 ? 0 : clamp(yawErr * 2.2, -mv.turn, mv.turn);
+
+  ar.setDrive(driveSpeed, turnSpeed);
+  return false;
+}
+
 
       // ══════════════════════════════════════
       //  EVENT: onObjectDetected
@@ -224,41 +412,26 @@
         };
 
         const angles = solveArmAngles(ar, offsetCoords, target, ikOverrides);
-        const yawErr = normalizeRad(target.targetYaw - target.yaw);
 
         const basePrefDist = clamp(angles.maxReach + angles.approachOff - 0.3,
           1.0, angles.maxReach + angles.approachOff);
-        const prefDist = Math.max(1.2, basePrefDist - this._distReduction);
+        const prefDist = Math.max(1.0, basePrefDist - this._distReduction);
 
-        const fwdErr = target.forward - prefDist;
-        const aligned = Math.abs(yawErr) < 0.22;
+        const yawErr = normalizeRad(target.targetYaw - target.yaw);
 
-        let speed = 0;
-        if (aligned && fwdErr > 0.02) {
-          const ratio = clamp(fwdErr / 0.25, 0.15, 1);
-          speed = clamp(fwdErr * 0.55 * ratio, 0.015, mv.speed * 0.45);
+        // ── Navigate Phase (A* routing) ──
+        if (this._phase === 'navigate') {
+          this._driveWithDetour(ar, offsetCoords, prefDist + 0.1, 1.0);
+        } else {
+          ar.setDrive(0, 0);
         }
-        let turn = Math.abs(yawErr) < 0.04
-          ? 0 : clamp(yawErr * 1.8, -mv.turn, mv.turn);
-
-        // ── Stop base drive once arm is deployed in approach ──
-        if (this._phase === 'approach') {
-          speed = 0;
-          turn = 0;
-        }
-
-        ar.setDrive(speed, turn);
 
         const canDeploy =
-          target.forward <= prefDist + 0.22 &&
+          target.forward <= prefDist + 0.35 &&
           Math.abs(yawErr) <= 0.32 &&
           Math.abs(target.side) <= (coords.half ?? 0.25) + 0.22;
 
         if (!canDeploy) {
-          // If we are in approach but can no longer deploy (e.g. distReduction caused prefDist to drop),
-          // we should either grab it if it's close, or revert to navigate.
-          // Since it's often a scale visual issue, let's just let the stall handler deal with it
-          // or switch back to navigate.
           if (this._phase === 'approach' && this._stallCount > 0) {
             // Let it continue to the stall logic or grab logic below
           } else {
@@ -284,14 +457,11 @@
 
         // ══════════════════════════════════════════
         //  ✅ FLOOR / STALL HANDLING
-        //    • FLOOR (collision > 2): rapproche robot + lève épaule
-        //    • STALL (2s sans contact): descend bras + rapproche
         // ══════════════════════════════════════════
         const now = performance.now();
         const approachTime = this._elapsed();
         const floorHits = ar.diagnostics.floorCollisionCount - this._floorHitBaseline;
 
-        // ── FLOOR LIMIT → rapprocher + lever épaule (persistant) ──
         if (floorHits > 2 && now > this._adaptCooldown) {
           this._floorCount++;
           this._distReduction += 0.20;
@@ -305,7 +475,6 @@
           return;
         }
 
-        // ── STALL (2s sans contact) → descendre bras + rapprocher ──
         if (approachTime > 2000 && now > this._adaptCooldown) {
           this._stallCount++;
           this._distReduction += 0.20;
@@ -321,7 +490,6 @@
           return;
         }
 
-        // ── HARD TIMEOUT (15s) ──
         if (approachTime > 15000) {
           logger('⚠️ Approach hard timeout → reset', 'warn');
           this.robot.moveArm('shoulder', 0);
@@ -333,7 +501,6 @@
           return;
         }
 
-        // ── CONTACT DETECTED → autoGrab ──
         const sensorContact = this._contact.left || this._contact.right;
         const geoContact = this._isBoxInGrip(ar, coords);
 
@@ -385,8 +552,6 @@
           return;
         }
 
-        // ══════════════════════════════════════
-        // ══════════════════════════════════════
         if (state === 'end') {
           if (['lift', 'carry', 'place'].includes(this._phase)) {
             logger('🛡️ BLOCKED false release during ' + this._phase, 'warn');
@@ -478,7 +643,7 @@
             z: DROP_GOAL.z - Math.cos(targetYaw) * dropPrefDist
           };
 
-          if (driveBaseTo(ar, dropOffsetCoords, 0.18)) {
+          if (this._driveWithDetour(ar, dropOffsetCoords, 0.18, 1.0)) {
             this._switchPhase('place');
           }
           return;
@@ -490,7 +655,6 @@
           const desc = ar.description;
           const boxHalf = desc.box?.half ?? 0.25;
 
-          // Use the ACTUAL drop goal coordinates so the IK perfectly matches the approach phase!
           const placeCoords = { x: DROP_GOAL.x, y: boxHalf, z: DROP_GOAL.z };
           const target = localTargetFrom(ar, placeCoords);
 
@@ -501,7 +665,6 @@
           this.robot.moveArm('wrist', 0);
 
           // ── DYNAMIC DESCENT DETECTION ──
-          // Track the actual physical movement of the hand!
           const palmG = ar.parts.palm.group;
           const palmWP = palmG.getWorldPosition(ar.parts.base.group.position.clone().set(0, 0, 0));
 
@@ -515,11 +678,8 @@
           }
           this._lastPalmY = palmWP.y;
 
-          // Give it at least 2.5 seconds to start descending.
-          // Once it has completely stopped moving for ~60 frames (1-2 seconds), it means it has reached the ground!
-          // Ultimate fallback: 20 seconds.
           if ((this._elapsed() > 2500 && this._palmStableCount > 60) || this._elapsed() > 20000) {
-            this._lastPalmY = null; // reset
+            this._lastPalmY = null;
             this._startAutoRelease();
           }
           return;
@@ -591,7 +751,6 @@
         const bz = coords.z - palmWP.z;
 
         const qx = -palmWQ.x, qy = -palmWQ.y, qz = -palmWQ.z, qw = palmWQ.w;
-        // q * v * q^-1 (quaternion rotation)
         const ix = qw * bx + qy * bz - qz * by;
         const iy = qw * by + qz * bx - qx * bz;
         const iz = qw * bz + qx * by - qy * bx;
@@ -609,7 +768,6 @@
 
         const scale = ar.parts.base.group.scale.x || 1.0;
 
-        // Moderate margins to guarantee grab if visually inside, but scaled correctly!
         const marginX = 0.2;
         const marginY = 0.2;
         const marginZ = 0.2;
@@ -620,11 +778,10 @@
 
         const inGrip = Math.abs(lx) < limX && Math.abs(ly) < limY && Math.abs(lz) < limZ;
 
-        // Log locally always to find out why it fails
-        if (!inGrip) {
+        if (!inGrip && Math.hypot(lx, ly, lz) < 1.5) {
           this._lastGeoLog = this._lastGeoLog || 0;
-          if (performance.now() - this._lastGeoLog > 1000) {
-            console.log(`[GeoDebug] dist: ${Math.hypot(lx, ly, lz).toFixed(2)}m | lx:${lx.toFixed(2)}/${limX.toFixed(2)} ly:${ly.toFixed(2)}/${limY.toFixed(2)} lz:${lz.toFixed(2)}/${limZ.toFixed(2)} | box: ${coords.x.toFixed(2)},${coords.y.toFixed(2)},${coords.z.toFixed(2)} palm: ${palmWP.x.toFixed(2)},${palmWP.y.toFixed(2)},${palmWP.z.toFixed(2)}`);
+          if (performance.now() - this._lastGeoLog > 1500) {
+            console.log(`[GeoDebug] lx:${lx.toFixed(2)}/${limX.toFixed(2)} ly:${ly.toFixed(2)}/${limY.toFixed(2)} lz:${lz.toFixed(2)}/${limZ.toFixed(2)}`);
             this._lastGeoLog = performance.now();
           }
         }
