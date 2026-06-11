@@ -2,10 +2,13 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160/build/three.mod
 import * as CANNON from "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js";
 
 /**
- * Factory Environment v2 — واقعية عالية، أداء سلس
+ * Factory Environment v3 — واقعية سينمائية، أداء سلس
  *   أرضية ببقع زيت وآثار إطارات — جدران معدنية مموّجة — نوافذ علوية
  *   باب مصنع — رافعة شوكية — صناديق كرتونية — مناطق مرقّمة
- *   طفايات حريق — لوحات كهرباء — سقف بجمالونات — إضاءة صناعية
+ *   غبار طافٍ — أعمدة ضوء — مكتب مشرف — ورشة عمل — كاميرات تومض
+ *   مروحة تدور — محطة شحن — لافتات — إضاءة صناعية
+ *
+ *   ⚠ استدعِ updateFactory(performance.now()) في حلقة الرسم للحركة الحية
  */
 
 // ─── مقاسات المصنع ───
@@ -72,12 +75,10 @@ function makeCardboardTexture() {
     g.fillStyle = `rgba(0,0,0,${Math.random() * 0.06})`;
     g.fillRect(Math.random() * 128, Math.random() * 128, 3, 1);
   }
-  // شريط لاصق
   g.fillStyle = 'rgba(190,170,140,0.9)';
   g.fillRect(54, 0, 20, 128);
   g.fillStyle = 'rgba(0,0,0,0.15)';
   g.fillRect(54, 0, 2, 128); g.fillRect(72, 0, 2, 128);
-  // ملصق شحن
   g.fillStyle = '#f0ede6';
   g.fillRect(8, 78, 40, 26);
   g.fillStyle = '#222';
@@ -92,7 +93,6 @@ function makeCorrugatedTexture(baseColor) {
   const g = c.getContext('2d');
   g.fillStyle = baseColor;
   g.fillRect(0, 0, 256, 256);
-  // تموجات رأسية
   for (let x = 0; x < 256; x += 16) {
     const grad = g.createLinearGradient(x, 0, x + 16, 0);
     grad.addColorStop(0, 'rgba(0,0,0,0.16)');
@@ -101,7 +101,6 @@ function makeCorrugatedTexture(baseColor) {
     g.fillStyle = grad;
     g.fillRect(x, 0, 16, 256);
   }
-  // صدأ خفيف أسفل
   for (let i = 0; i < 60; i++) {
     g.fillStyle = `rgba(110,70,40,${Math.random() * 0.10})`;
     g.fillRect(Math.random() * 256, 200 + Math.random() * 56, Math.random() * 18 + 4, Math.random() * 8 + 2);
@@ -124,13 +123,15 @@ function makeRollerDoorTexture() {
     g.fillStyle = 'rgba(0,0,0,0.30)';
     g.fillRect(0, y + 16, 256, 4);
   }
-  // اتساخ
   for (let i = 0; i < 120; i++) {
     g.fillStyle = `rgba(0,0,0,${Math.random() * 0.07})`;
     g.fillRect(Math.random() * 256, Math.random() * 256, 14, 3);
   }
   return new THREE.CanvasTexture(c);
 }
+
+// ─── عناصر متحركة — تُحدَّث عبر updateFactory(t) ───
+const animated = { fans: [], beacons: [], dust: null, beltMats: [] };
 
 // ══════════════════════════════════════════════════
 //  buildFactory(scene, world, groundMaterial)
@@ -153,8 +154,12 @@ export function buildFactory(scene, world, groundMaterial) {
   buildSigns(root);
   buildColumns(root);
   buildGuardRails(root);
-  buildForklift(root);        // 🆕 رافعة شوكية
-  buildWallProps(root);       // 🆕 طفايات + لوحات كهرباء + ساعة
+  buildForklift(root);        // رافعة شوكية
+  buildWallProps(root);       // طفايات + لوحات كهرباء + ساعة
+  buildAtmosphere(root);      // 🆕 غبار + أعمدة ضوء
+  buildOffice(root);          // 🆕 مكتب مشرف زجاجي
+  buildWorkArea(root);        // 🆕 ورشة + خزائن
+  buildLivingDetails(root);   // 🆕 كاميرات + مروحة + لافتة + محطة شحن
 
   if (world) buildPhysics(world, groundMaterial);
 
@@ -173,14 +178,13 @@ function buildFloor(root) {
   ctx.fillStyle = '#6b6b6b';
   ctx.fillRect(0, 0, 1024, 1024);
 
-  // حبيبات الخرسانة
   for (let i = 0; i < 9000; i++) {
     const a = Math.random() * 0.14;
     ctx.fillStyle = Math.random() > 0.5 ? `rgba(255,255,255,${a})` : `rgba(0,0,0,${a})`;
     ctx.fillRect(Math.random() * 1024, Math.random() * 1024, Math.random() * 2 + 0.5, Math.random() * 2 + 0.5);
   }
 
-  // 🆕 بقع زيت داكنة
+  // بقع زيت داكنة
   for (let i = 0; i < 14; i++) {
     const x = Math.random() * 1024, y = Math.random() * 1024;
     const r = Math.random() * 50 + 18;
@@ -192,7 +196,7 @@ function buildFloor(root) {
     ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
   }
 
-  // 🆕 آثار إطارات منحنية
+  // آثار إطارات منحنية
   ctx.strokeStyle = 'rgba(25,22,20,0.16)';
   ctx.lineWidth = 14;
   for (let i = 0; i < 8; i++) {
@@ -202,7 +206,7 @@ function buildFloor(root) {
     ctx.stroke();
   }
 
-  // 🆕 مناطق تآكل فاتحة (مسارات الحركة المتكررة)
+  // مسارات تآكل فاتحة
   for (let i = 0; i < 5; i++) {
     const grad = ctx.createLinearGradient(0, 0, 1024, 0);
     grad.addColorStop(0, 'rgba(255,255,255,0)');
@@ -263,7 +267,7 @@ function buildWalls(root) {
     root.add(lower);
   }
 
-  // 🆕 نوافذ علوية مضيئة (ضوء نهار) على الجدارين الجانبيين
+  // نوافذ علوية مضيئة (ضوء نهار)
   const winMat = new THREE.MeshStandardMaterial({
     color: 0xbfdcff, emissive: 0x9fc8f0, emissiveIntensity: 0.55,
     roughness: 0.2, metalness: 0.1,
@@ -277,28 +281,26 @@ function buildWalls(root) {
       glass.position.set(side * (HALF_W - 0.26), FH - 2.2, z);
       glass.rotation.y = side > 0 ? -Math.PI / 2 : Math.PI / 2;
       root.add(glass);
-      // قضبان النافذة
       const bar = box(0.05, 1.8, 0.06, frameMat, { x: side * (HALF_W - 0.24), y: FH - 2.2, z });
       root.add(bar);
     }
   }
 
-  // 🆕 باب مصنع كبير (Roller Door) على الجدار الأمامي
+  // باب مصنع كبير (Roller Door)
   const doorTex = makeRollerDoorTexture();
   const doorMat = new THREE.MeshStandardMaterial({ map: doorTex, roughness: 0.55, metalness: 0.55 });
   const door = new THREE.Mesh(new THREE.PlaneGeometry(6, 5), doorMat);
   door.position.set(10, 2.5, HALF_D - 0.18);
   door.rotation.y = Math.PI;
   root.add(door);
-  // إطار الباب بشريط تحذيري
+
   const doorFrameMat = mat(COL.caution, { roughness: 0.5 });
   root.add(box(0.3, 5.2, 0.15, doorFrameMat, { x: 10 - 3.15, y: 2.6, z: HALF_D - 0.2 }));
   root.add(box(0.3, 5.2, 0.15, doorFrameMat, { x: 10 + 3.15, y: 2.6, z: HALF_D - 0.2 }));
   root.add(box(6.6, 0.3, 0.15, doorFrameMat, { x: 10, y: 5.25, z: HALF_D - 0.2 }));
-  // علبة محرك الباب
   root.add(box(6.6, 0.5, 0.5, mat(0x3a4048, { metalness: 0.6 }), { x: 10, y: 5.7, z: HALF_D - 0.35 }));
 
-  // 🆕 لافتة EXIT مضيئة فوق الباب
+  // لافتة EXIT مضيئة
   const exitCanvas = document.createElement('canvas');
   exitCanvas.width = 128; exitCanvas.height = 48;
   const eg = exitCanvas.getContext('2d');
@@ -316,7 +318,7 @@ function buildWalls(root) {
 }
 
 // ──────────────────────────────────────────────────
-//  سقف + عوارض بجمالونات (Trusses)
+//  سقف + عوارض بجمالونات + سكاي لايت
 // ──────────────────────────────────────────────────
 function buildCeiling(root) {
   const ceilMat = mat(COL.ceiling, { roughness: 0.9, metalness: 0.02, side: THREE.DoubleSide });
@@ -334,15 +336,14 @@ function buildCeiling(root) {
     root.add(box(FW - 1, 0.08, 0.4, beamMat, { x: 0, y: FH - 0.6, z }));
     root.add(box(FW - 1, 0.08, 0.4, beamMat, { x: 0, y: FH - 0.04, z }));
 
-    // 🆕 قضبان جمالون مائلة (تبدو كهيكل V متكرر)
+    // قضبان جمالون مائلة
     for (let x = -HALF_W + 4; x < HALF_W - 4; x += 4) {
-      const d1 = box(0.06, 0.7, 0.06, beamMat, { x: x + 1, y: FH - 0.32, z }, 0, 0, 0.62);
-      const d2 = box(0.06, 0.7, 0.06, beamMat, { x: x + 3, y: FH - 0.32, z }, 0, 0, -0.62);
-      root.add(d1); root.add(d2);
+      root.add(box(0.06, 0.7, 0.06, beamMat, { x: x + 1, y: FH - 0.32, z }, 0, 0, 0.62));
+      root.add(box(0.06, 0.7, 0.06, beamMat, { x: x + 3, y: FH - 0.32, z }, 0, 0, -0.62));
     }
   }
 
-  // 🆕 شرائح سكاي لايت (إضاءة نهارية من السقف)
+  // شرائح سكاي لايت
   const skyMat = new THREE.MeshStandardMaterial({
     color: 0xcfe4ff, emissive: 0xb8d4f5, emissiveIntensity: 0.45,
     roughness: 0.3, side: THREE.DoubleSide,
@@ -356,7 +357,7 @@ function buildCeiling(root) {
 }
 
 // ──────────────────────────────────────────────────
-//  رفوف صناعية (Pallet Racks)
+//  رفوف صناعية
 // ──────────────────────────────────────────────────
 function buildShelves(root) {
   const postMat = mat(COL.shelfPost, { roughness: 0.5, metalness: 0.4 });
@@ -408,7 +409,7 @@ function buildOneShelf(root, def, postMat, shelfMat) {
     }
   }
 
-  // 🆕 واقيات أعمدة صفراء عند طرفي الرف
+  // واقيات أعمدة صفراء
   const guardMat = mat(COL.caution, { roughness: 0.55 });
   [-length / 2, length / 2].forEach(px => {
     group.add(box(0.25, 0.4, depth + 0.3, guardMat, { x: px, y: 0.2, z: 0 }));
@@ -418,7 +419,7 @@ function buildOneShelf(root, def, postMat, shelfMat) {
 }
 
 // ──────────────────────────────────────────────────
-//  صناديق كرتونية واقعية على الرفوف
+//  صناديق كرتونية على الرفوف
 // ──────────────────────────────────────────────────
 function buildShelfBoxes(root) {
   const cardboardTex = makeCardboardTexture();
@@ -459,7 +460,7 @@ function buildShelfBoxes(root) {
         bm.castShadow = true;
         root.add(bm);
 
-        // 🆕 أحياناً صندوق ثانٍ مكدّس فوقه
+        // صندوق مكدّس أحياناً
         if (Math.random() < 0.3 && lv < sc.levels - 1) {
           const s2 = size * 0.8;
           const bm2 = new THREE.Mesh(new THREE.BoxGeometry(s2, s2, s2), bMat);
@@ -509,7 +510,7 @@ function buildConveyors(root) {
       g.add(roll);
     }
 
-    // 🆕 صناديق كرتونية على الحزام
+    // صناديق كرتونية على الحزام
     const cTex = makeCardboardTexture();
     const cMat = new THREE.MeshStandardMaterial({ map: cTex, roughness: 0.88 });
     for (let i = 0; i < 3; i++) {
@@ -546,13 +547,12 @@ function buildBarrels(root) {
   let n = 0;
   for (const p of positions) {
     const y = p.stack ? 1.35 : 0.45;
-    const material = (n++ % 3 === 2) ? bMatRed : bMat;   // 🆕 تنويع الألوان
+    const material = (n++ % 3 === 2) ? bMatRed : bMat;
     const barrel = new THREE.Mesh(barrelGeo, material);
     barrel.position.set(p.x, y, p.z);
     barrel.castShadow = true;
     root.add(barrel);
 
-    // 🆕 حلقتا تقوية حول البرميل
     for (const ry of [-0.22, 0.22]) {
       const ring = new THREE.Mesh(ringGeo, topMat);
       ring.position.set(p.x, y + ry, p.z);
@@ -617,7 +617,6 @@ function buildFloorMarkings(root) {
     root.add(box(l.w, 0.01, l.d, lineMat, { x: l.x, y: 0.005, z: l.z }, 0, l.ry));
   }
 
-  // أسهم اتجاه
   const arrowMat = mat(0xffffff, { roughness: 0.5, metalness: 0.1 });
   const arrowPositions = [
     { x: 5, z: 0, ry: -Math.PI / 2 },
@@ -641,19 +640,19 @@ function buildFloorMarkings(root) {
     root.add(arrow);
   }
 
-  // 🆕 ممر مشاة (Zebra) أمام الباب
+  // ممر مشاة (Zebra) أمام الباب
   const zebraMat = mat(0xffffff, { roughness: 0.6 });
   for (let i = 0; i < 6; i++) {
     root.add(box(0.5, 0.01, 3.4, zebraMat, { x: 7.6 + i * 0.95, y: 0.006, z: HALF_D - 4 }));
   }
 
-  // 🆕 منطقة محظورة بخطوط مائلة (تحت الرف الأمامي)
+  // منطقة محظورة بخطوط مائلة
   const hatchMat = mat(COL.floorLine, { roughness: 0.6 });
   for (let i = 0; i < 7; i++) {
     root.add(box(2.6, 0.01, 0.12, hatchMat, { x: -14, y: 0.006, z: 15.4 + i * 0.85 }, 0, Math.PI / 4));
   }
 
-  // 🆕 ملصقات أرضية "ZONE A / ZONE B"
+  // ملصقات أرضية ZONE A / ZONE B
   function zoneLabel(text, x, z, color) {
     const c = document.createElement('canvas');
     c.width = 256; c.height = 96;
@@ -770,8 +769,16 @@ function buildPhysics(world, gndMat) {
     addStaticBox(world, gndMat, r.w / 2, 0.6, r.d / 2, r.x, 0.6, r.z, r.ry);
   }
 
-  // 🆕 ── الرافعة الشوكية ──
+  // ── الرافعة الشوكية ──
   addStaticBox(world, gndMat, 1.0, 1.1, 1.6, 17, 1.1, 22, -0.5);
+
+  // 🆕 ── مكتب المشرف ──
+  addStaticBox(world, gndMat, 4, 1.5, 3.1, -24, 1.5, 23);
+  // 🆕 ── طاولة الورشة + الخزائن ──
+  addStaticBox(world, gndMat, 0.5, 0.95, 1.3, 26, 0.95, 0);
+  addStaticBox(world, gndMat, 0.3, 0.9, 1.5, 26.1, 0.9, 3.8);
+  // 🆕 ── محطة الشحن ──
+  addStaticBox(world, gndMat, 0.3, 0.8, 1.3, -26, 0.8, -5);
 }
 
 // ──────────────────────────────────────────────────
@@ -779,7 +786,7 @@ function buildPhysics(world, gndMat) {
 // ──────────────────────────────────────────────────
 function buildPipes(root) {
   const pipeMat = mat(COL.pipe, { roughness: 0.35, metalness: 0.6 });
-  const yellowPipeMat = mat(0xd8b020, { roughness: 0.4, metalness: 0.5 });   // 🆕 أنبوب غاز أصفر
+  const yellowPipeMat = mat(0xd8b020, { roughness: 0.4, metalness: 0.5 });
   const pipeGeo = new THREE.CylinderGeometry(0.08, 0.08, FW - 4, 8);
 
   const pipeZ = [-15, -5, 5, 15];
@@ -799,7 +806,7 @@ function buildPipes(root) {
     }
   }
 
-  // 🆕 أنبوب أصفر إضافي (خط غاز)
+  // أنبوب غاز أصفر
   const gasPipe = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, FW - 4, 8), yellowPipeMat);
   gasPipe.position.set(0, FH - 1.4, -10);
   gasPipe.rotation.z = Math.PI / 2;
@@ -840,7 +847,7 @@ function buildIndustrialLights(root, scene) {
       glow.rotation.x = -Math.PI / 2;
       root.add(glow);
 
-      // سلسلتا تعليق 🆕
+      // سلسلتا تعليق
       for (const dx of [-0.5, 0.5]) {
         const chain = new THREE.Mesh(
           new THREE.CylinderGeometry(0.012, 0.012, 0.32, 6),
@@ -959,7 +966,7 @@ function buildGuardRails(root) {
 }
 
 // ──────────────────────────────────────────────────
-//  🆕 رافعة شوكية (ديكور ثابت — له جسم فيزيائي)
+//  رافعة شوكية (ديكور ثابت — له جسم فيزيائي)
 // ──────────────────────────────────────────────────
 function buildForklift(root) {
   const bodyMat = mat(COL.forklift, { roughness: 0.5, metalness: 0.4 });
@@ -971,23 +978,19 @@ function buildForklift(root) {
   g.position.set(17, 0, 22);
   g.rotation.y = -0.5;
 
-  // الهيكل + ثقل الموازنة الخلفي
   g.add(box(1.3, 0.8, 1.9, bodyMat, { x: 0, y: 0.85, z: -0.1 }));
   g.add(box(1.2, 0.6, 0.6, darkMat, { x: 0, y: 0.75, z: -1.3 }));
-  // قفص السائق
   for (const dx of [-0.55, 0.55]) {
     g.add(box(0.08, 1.1, 0.08, darkMat, { x: dx, y: 1.8, z: 0.5 }));
     g.add(box(0.08, 1.1, 0.08, darkMat, { x: dx, y: 1.8, z: -0.7 }));
   }
   g.add(box(1.25, 0.08, 1.4, darkMat, { x: 0, y: 2.35, z: -0.1 }));
-  // المقعد وعجلة القيادة
   g.add(box(0.5, 0.4, 0.5, darkMat, { x: 0, y: 1.45, z: -0.5 }));
   const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.03, 8, 16), darkMat);
   wheel.rotation.x = -0.9;
   wheel.position.set(0, 1.55, 0.15);
   g.add(wheel);
 
-  // الصاري (Mast) والشوكتان
   for (const dx of [-0.35, 0.35]) {
     g.add(box(0.1, 2.6, 0.1, mastMat, { x: dx, y: 1.3, z: 0.95 }));
   }
@@ -996,7 +999,6 @@ function buildForklift(root) {
     g.add(box(0.12, 0.05, 1.1, mastMat, { x: dx, y: 0.12, z: 1.6 }));
   }
 
-  // عجلات
   const tireGeo = new THREE.CylinderGeometry(0.32, 0.32, 0.24, 14);
   tireGeo.rotateZ(Math.PI / 2);
   [[-0.65, 0.55], [0.65, 0.55], [-0.6, -1.0], [0.6, -1.0]].forEach(([x, z]) => {
@@ -1006,22 +1008,21 @@ function buildForklift(root) {
     g.add(t);
   });
 
-  // ضوء تحذير برتقالي على السقف
   const beacon = new THREE.Mesh(
     new THREE.CylinderGeometry(0.07, 0.09, 0.12, 10),
     new THREE.MeshStandardMaterial({ color: 0xff8800, emissive: 0xff6600, emissiveIntensity: 0.8 })
   );
   beacon.position.set(0.4, 2.47, -0.1);
   g.add(beacon);
+  animated.beacons.push(beacon.material);   // 🆕 يومض
 
   root.add(g);
 }
 
 // ──────────────────────────────────────────────────
-//  🆕 معدات الجدران: طفايات حريق + لوحات كهرباء + ساعة
+//  معدات الجدران: طفايات + لوحات كهرباء + ساعة
 // ──────────────────────────────────────────────────
 function buildWallProps(root) {
-  // طفايات حريق على الأعمدة
   const extMat = mat(0xcc2211, { roughness: 0.35, metalness: 0.3 });
   const extTopMat = mat(0x222222, { roughness: 0.5, metalness: 0.5 });
   [{ x: -12, z: -12 }, { x: 12, z: 12 }, { x: 12, z: 0 }].forEach(p => {
@@ -1031,16 +1032,13 @@ function buildWallProps(root) {
     const nozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.12, 8), extTopMat);
     nozzle.position.set(p.x + 0.34, 1.28, p.z);
     root.add(nozzle);
-    // لوحة حمراء خلف الطفاية
     root.add(box(0.3, 0.6, 0.02, mat(0xaa1111, { roughness: 0.6 }), { x: p.x + 0.27, y: 1.05, z: p.z }));
   });
 
-  // لوحات كهرباء على الجدار الخلفي
   const panelMat = mat(0x8a9098, { roughness: 0.4, metalness: 0.6 });
   [-8, -4].forEach(x => {
     root.add(box(1.0, 1.6, 0.18, panelMat, { x, y: 1.8, z: -HALF_D + 0.28 }));
     root.add(box(0.9, 0.06, 0.2, mat(0x303438), { x, y: 2.4, z: -HALF_D + 0.3 }));
-    // لمبة حالة خضراء
     const led = new THREE.Mesh(
       new THREE.SphereGeometry(0.035, 8, 6),
       new THREE.MeshStandardMaterial({ color: 0x22ff44, emissive: 0x22cc44, emissiveIntensity: 1.0 })
@@ -1049,7 +1047,6 @@ function buildWallProps(root) {
     root.add(led);
   });
 
-  // ساعة حائط صناعية
   const clockCanvas = document.createElement('canvas');
   clockCanvas.width = 128; clockCanvas.height = 128;
   const cg = clockCanvas.getContext('2d');
@@ -1069,6 +1066,246 @@ function buildWallProps(root) {
   );
   clock.position.set(0, 5.5, -HALF_D + 0.22);
   root.add(clock);
+}
+
+// ──────────────────────────────────────────────────
+//  🆕 أجواء: غبار طافٍ + أعمدة ضوء من السكاي لايت
+// ──────────────────────────────────────────────────
+function buildAtmosphere(root) {
+  const count = 350;
+  const positions = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    positions[i * 3]     = (Math.random() - 0.5) * (FW - 6);
+    positions[i * 3 + 1] = Math.random() * (FH - 1) + 0.5;
+    positions[i * 3 + 2] = (Math.random() - 0.5) * (FD - 6);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  const dustMat = new THREE.PointsMaterial({
+    color: 0xfff5dd, size: 0.045, transparent: true, opacity: 0.35,
+    depthWrite: false, blending: THREE.AdditiveBlending,
+  });
+  const dust = new THREE.Points(geo, dustMat);
+  root.add(dust);
+  animated.dust = dust;
+
+  const shaftMat = new THREE.MeshBasicMaterial({
+    color: 0xcfe0ff, transparent: true, opacity: 0.05,
+    depthWrite: false, side: THREE.DoubleSide,
+  });
+  for (const z of [-12, 0, 12]) {
+    for (const x of [-14, 0, 14]) {
+      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 2.4, FH - 1, 8, 1, true), shaftMat);
+      shaft.position.set(x, (FH - 1) / 2 + 0.5, z);
+      root.add(shaft);
+    }
+  }
+}
+
+// ──────────────────────────────────────────────────
+//  🆕 مكتب مشرف زجاجي في الزاوية
+// ──────────────────────────────────────────────────
+function buildOffice(root) {
+  const wallMat = mat(0xb8bcc2, { roughness: 0.7 });
+  const glassMat = new THREE.MeshStandardMaterial({
+    color: 0xa8c8e0, transparent: true, opacity: 0.35,
+    roughness: 0.1, metalness: 0.2,
+  });
+  const g = new THREE.Group();
+  g.position.set(-24, 0, 23);
+
+  g.add(box(8, 1.2, 0.12, wallMat, { x: 0, y: 0.6, z: -3 }));
+  g.add(box(8, 1.6, 0.06, glassMat, { x: 0, y: 2.0, z: -3 }));
+  g.add(box(0.12, 1.2, 6, wallMat, { x: 4, y: 0.6, z: 0 }));
+  g.add(box(0.06, 1.6, 6, glassMat, { x: 4, y: 2.0, z: 0 }));
+  g.add(box(8, 0.15, 6.2, mat(0x9aa0a8), { x: 0, y: 2.9, z: 0 }));
+  g.add(box(0.9, 2.1, 0.08, mat(0x607080), { x: 2.5, y: 1.05, z: -3 }));
+  g.add(box(1.6, 0.06, 0.7, mat(0x8a6a4a), { x: -1.5, y: 0.75, z: -1.5 }));
+  g.add(box(0.5, 0.5, 0.5, mat(0x303540), { x: -1.5, y: 0.5, z: -0.7 }));
+  const screen = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.6, 0.35),
+    new THREE.MeshStandardMaterial({ color: 0x2255aa, emissive: 0x3377cc, emissiveIntensity: 0.8 })
+  );
+  screen.position.set(-1.5, 1.1, -1.7);
+  g.add(screen);
+
+  root.add(g);
+}
+
+// ──────────────────────────────────────────────────
+//  🆕 ورشة عمل: طاولة + لوحة أدوات + خزائن
+// ──────────────────────────────────────────────────
+function buildWorkArea(root) {
+  const g = new THREE.Group();
+  g.position.set(26, 0, 0);
+  g.rotation.y = -Math.PI / 2;
+
+  g.add(box(2.4, 0.08, 0.9, mat(0x7a5c3a, { roughness: 0.9 }), { x: 0, y: 0.9, z: 0 }));
+  for (const [dx, dz] of [[-1.1, -0.35], [1.1, -0.35], [-1.1, 0.35], [1.1, 0.35]]) {
+    g.add(box(0.08, 0.9, 0.08, mat(0x404448), { x: dx, y: 0.45, z: dz }));
+  }
+
+  const pegCanvas = document.createElement('canvas');
+  pegCanvas.width = 256; pegCanvas.height = 128;
+  const pg = pegCanvas.getContext('2d');
+  pg.fillStyle = '#c8a060'; pg.fillRect(0, 0, 256, 128);
+  pg.fillStyle = 'rgba(0,0,0,0.35)';
+  for (let y = 12; y < 128; y += 20) for (let x = 12; x < 256; x += 20) {
+    pg.beginPath(); pg.arc(x, y, 2.5, 0, Math.PI * 2); pg.fill();
+  }
+  pg.strokeStyle = '#333'; pg.lineWidth = 6;
+  pg.beginPath(); pg.moveTo(40, 30); pg.lineTo(40, 90); pg.stroke();
+  pg.beginPath(); pg.moveTo(90, 25); pg.lineTo(90, 85); pg.stroke();
+  pg.fillStyle = '#333'; pg.fillRect(78, 18, 24, 14);
+  pg.beginPath(); pg.moveTo(150, 30); pg.lineTo(150, 95); pg.stroke();
+  pg.fillStyle = '#884422'; pg.fillRect(138, 20, 24, 16);
+  const pegboard = new THREE.Mesh(
+    new THREE.PlaneGeometry(2.2, 1.1),
+    new THREE.MeshStandardMaterial({ map: new THREE.CanvasTexture(pegCanvas), roughness: 0.85 })
+  );
+  pegboard.position.set(0, 1.7, -0.5);
+  g.add(pegboard);
+
+  for (let i = 0; i < 4; i++) {
+    const locker = box(0.6, 1.8, 0.5, mat(i % 2 ? 0x5a7a9a : 0x6a8aaa, { metalness: 0.5, roughness: 0.4 }),
+      { x: -3.5 - i * 0.65, y: 0.9, z: -0.2 });
+    g.add(locker);
+    g.add(box(0.04, 0.3, 0.04, mat(0xd0d0d0, { metalness: 0.9 }), { x: -3.3 - i * 0.65, y: 1.0, z: 0.06 }));
+  }
+
+  root.add(g);
+}
+
+// ──────────────────────────────────────────────────
+//  🆕 لمسات حية: كاميرات + مروحة + لافتة + محطة شحن
+// ──────────────────────────────────────────────────
+function buildLivingDetails(root) {
+  // كاميرات مراقبة (LED يومض)
+  const camBody = mat(0xe8e8e8, { roughness: 0.4, metalness: 0.3 });
+  [{ x: -12, z: -12, ry: 0.8 }, { x: 12, z: 12, ry: -2.2 }].forEach(p => {
+    const g = new THREE.Group();
+    g.position.set(p.x, 3.4, p.z);
+    g.rotation.y = p.ry;
+    g.add(box(0.12, 0.3, 0.12, camBody, { x: 0, y: 0.15, z: 0 }));
+    const cam = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.11, 0.32, 10), camBody);
+    cam.rotation.x = Math.PI / 2 - 0.3;
+    cam.position.set(0, 0, 0.18);
+    g.add(cam);
+    const lens = new THREE.Mesh(new THREE.CircleGeometry(0.05, 10),
+      new THREE.MeshStandardMaterial({ color: 0x111122, roughness: 0.1, metalness: 0.5 }));
+    lens.position.set(0, -0.05, 0.34);
+    lens.rotation.x = -0.3;
+    g.add(lens);
+    const led = new THREE.Mesh(new THREE.SphereGeometry(0.02, 6, 6),
+      new THREE.MeshStandardMaterial({ color: 0xff2222, emissive: 0xff0000, emissiveIntensity: 1 }));
+    led.position.set(0.06, 0.06, 0.3);
+    g.add(led);
+    animated.beacons.push(led.material);
+    root.add(g);
+  });
+
+  // مروحة جدارية تدور
+  const fanG = new THREE.Group();
+  fanG.position.set(-HALF_W + 0.4, 7, 10);
+  fanG.rotation.y = Math.PI / 2;
+  const fanRing = new THREE.Mesh(new THREE.TorusGeometry(0.9, 0.07, 8, 24), mat(0x3a4048, { metalness: 0.6 }));
+  fanG.add(fanRing);
+  const blades = new THREE.Group();
+  for (let i = 0; i < 4; i++) {
+    const blade = box(0.25, 0.8, 0.04, mat(0x8a9098, { metalness: 0.7 }), { x: 0, y: 0.45, z: 0 });
+    const holder = new THREE.Group();
+    holder.rotation.z = (i / 4) * Math.PI * 2;
+    holder.add(blade);
+    blades.add(holder);
+  }
+  const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.15, 10), mat(0x303438));
+  hub.rotation.x = Math.PI / 2;
+  blades.add(hub);
+  fanG.add(blades);
+  animated.fans.push(blades);
+  root.add(fanG);
+
+  // لافتة SAFETY FIRST معلقة
+  const bannerCanvas = document.createElement('canvas');
+  bannerCanvas.width = 512; bannerCanvas.height = 128;
+  const bg = bannerCanvas.getContext('2d');
+  bg.fillStyle = '#1a4a7a'; bg.fillRect(0, 0, 512, 128);
+  bg.strokeStyle = '#fff'; bg.lineWidth = 4; bg.strokeRect(8, 8, 496, 112);
+  bg.fillStyle = '#ffffff'; bg.font = 'bold 52px Arial'; bg.textAlign = 'center';
+  bg.fillText('⚠ SAFETY FIRST', 256, 80);
+  const banner = new THREE.Mesh(
+    new THREE.PlaneGeometry(6, 1.5),
+    new THREE.MeshStandardMaterial({ map: new THREE.CanvasTexture(bannerCanvas), side: THREE.DoubleSide, roughness: 0.9 })
+  );
+  banner.position.set(0, FH - 2.5, -8);
+  root.add(banner);
+  for (const dx of [-2.8, 2.8]) {
+    const wire = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 1.7, 4), mat(0x222222));
+    wire.position.set(dx, FH - 1.6, -8);
+    root.add(wire);
+  }
+
+  // محطة شحن روبوتات
+  const stationG = new THREE.Group();
+  stationG.position.set(-26, 0, -5);
+  stationG.add(box(0.5, 1.6, 2.4, mat(0x2a3038, { metalness: 0.6, roughness: 0.35 }), { x: 0, y: 0.8, z: 0 }));
+  const strip = new THREE.Mesh(
+    new THREE.BoxGeometry(0.06, 1.3, 0.1),
+    new THREE.MeshStandardMaterial({ color: 0x22ff66, emissive: 0x22cc55, emissiveIntensity: 1.2 })
+  );
+  strip.position.set(0.26, 0.85, 0.9);
+  stationG.add(strip);
+  const strip2 = strip.clone();
+  strip2.position.z = -0.9;
+  stationG.add(strip2);
+  const boltCanvas = document.createElement('canvas');
+  boltCanvas.width = 64; boltCanvas.height = 64;
+  const bc = boltCanvas.getContext('2d');
+  bc.fillStyle = '#ffdd22';
+  bc.beginPath();
+  bc.moveTo(38, 6); bc.lineTo(20, 36); bc.lineTo(30, 36); bc.lineTo(26, 58); bc.lineTo(46, 28); bc.lineTo(34, 28);
+  bc.closePath(); bc.fill();
+  const bolt = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.5, 0.5),
+    new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(boltCanvas), transparent: true })
+  );
+  bolt.position.set(0.26, 1.1, 0);
+  bolt.rotation.y = Math.PI / 2;
+  stationG.add(bolt);
+  root.add(stationG);
+
+  // لافتة أرضية مبللة A-Frame
+  const wetG = new THREE.Group();
+  wetG.position.set(4, 0, 8);
+  wetG.rotation.y = 0.6;
+  [-0.25, 0.25].forEach((tilt, i) => {
+    const panel = box(0.45, 0.7, 0.02, mat(COL.caution, { roughness: 0.5 }), { x: 0, y: 0.34, z: i ? 0.1 : -0.1 }, tilt);
+    wetG.add(panel);
+  });
+  root.add(wetG);
+}
+
+// ──────────────────────────────────────────────────
+//  🆕 updateFactory(t) — استدعِها في حلقة الرسم
+// ──────────────────────────────────────────────────
+export function updateFactory(t) {
+  // دوران المراوح
+  for (const f of animated.fans) f.rotation.z = t * 0.004;
+
+  // وميض الكاميرات وضوء الرافعة
+  const blink = (Math.sin(t * 0.004) > 0.6) ? 1.4 : 0.15;
+  for (const m of animated.beacons) m.emissiveIntensity = blink;
+
+  // انجراف الغبار
+  if (animated.dust) {
+    const pos = animated.dust.geometry.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      let y = pos.getY(i) + Math.sin(t * 0.0005 + i) * 0.0015 - 0.0008;
+      if (y < 0.3) y = FH - 1;
+      pos.setY(i, y);
+    }
+    pos.needsUpdate = true;
+  }
 }
 
 // ──────────────────────────────────────────────────

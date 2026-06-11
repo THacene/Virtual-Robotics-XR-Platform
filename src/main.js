@@ -7,7 +7,7 @@ import { Robot3D } from './core/Robot3D.js';
 import { makeDescription } from './core/defaultDescription.js';
 import { FingerSensor } from './sensors/FingerSensor.js';
 import { Environment } from './environment/Environment.js';
-import { buildFactory, checkFactoryCollision } from './environment/factory.js';
+import { buildFactory, checkFactoryCollision , updateFactory } from './environment/factory.js';
 import { updateTelemetry } from './ui/telemetry.js';
 import { smartGripUpdate } from './logic/gripLogic.js';
 import { log } from './ui/log.js';
@@ -777,6 +777,9 @@ renderer.setAnimationLoop(function mainLoop() {
   const now = performance.now();
   const dt = Math.min((now - _lastTime) / 1000, 0.05);
   _lastTime = now;
+  
+    updateFactory(now);   // ✅ أضف هذا السطر هنا
+
 
   applyKeyboardToActive();
   applyThumbstickToActive();
