@@ -3,6 +3,10 @@
 A WebXR-powered robotic arm factory simulation with 4-DOF manipulators, physics-based gripping, computer vision, and multi-user synchronization. Built with Three.js, cannon-es, and Express.
 
 ## Screenshots
+![fac](screenshots/fac.PNG)
+![fac2](screenshots/fac2.PNG)
+![fac3](screenshots/fac3.PNG)
+
 ![VR Control](screenshots/vr%20control.PNG)
 ![VR Control](screenshots/camera%20vision.PNG)
 ![VR Control 2](screenshots/vr%20control%202.PNG)
