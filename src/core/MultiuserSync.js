@@ -1,3 +1,4 @@
+import * as CANNON from "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js";
 const WS_URL = `wss://${location.hostname}:3000/mu`;
 
 export class MultiuserSync {
@@ -10,7 +11,7 @@ export class MultiuserSync {
     this.connected = false;
     this.remoteStates = new Map();
     this.remoteTimestamps = new Map();
-    this.remoteHeld = null;
+    this.remoteHeld = new Map();
     this.lastSend = 0;
     this.sendInterval = 50;
     this.onReady = null;
@@ -18,9 +19,8 @@ export class MultiuserSync {
     this._lastState = null;
     this.reconnectTimer = null;
     this._clockOffset = 0;
-    this._clockOffset = 0;
-    this._boxState = null;
-    this._boxTs = 0;
+    this._boxStates = new Map();
+    this._boxTimestamps = new Map();
     this.owners = new Map();
   }
 
@@ -54,6 +54,7 @@ export class MultiuserSync {
           this.owners.delete(this.robotIndex);
         }
         this.robotIndex = msg.robotIndex;
+        this.remoteStates.delete(this.robotIndex); // Clear any old remote state for this robot
         this.owners.set(msg.robotIndex, msg.clientId);
         this.onReady?.(msg.robotIndex);
         break;
@@ -101,12 +102,20 @@ export class MultiuserSync {
             }
           }
         }
-        if (msg.box) {
-          const bt = msg.box.t ?? 0;
-          if (bt >= this._boxTs) {
-            this._boxTs = bt;
-            this._boxState = msg.box;
-            this._applyBoxState();
+        if (msg.boxes) {
+          for (const [idStr, boxSt] of Object.entries(msg.boxes)) {
+            const id = parseInt(idStr);
+            const bt = boxSt.t ?? 0;
+            if (bt >= (this._boxTimestamps.get(id) ?? -1)) {
+              this._boxTimestamps.set(id, bt);
+              this._boxStates.set(id, boxSt);
+            }
+          }
+          this._applyBoxStatesInit();
+        }
+        if (msg.dynamicRobots && msg.dynamicRobots.length > 0) {
+          if (this.onSyncDynamicRobots) {
+            this.onSyncDynamicRobots(msg.dynamicRobots);
           }
         }
         break;
@@ -120,13 +129,51 @@ export class MultiuserSync {
         this.remoteTimestamps.set(msg.robotIndex, ts);
         this.remoteStates.set(msg.robotIndex, msg.state);
         const st = msg.state;
-        if (st.boxX !== undefined && ts >= this._boxTs) {
-          this._boxTs = ts;
-          this._boxState = {
-            x: st.boxX, y: st.boxY, z: st.boxZ,
-            qx: st.boxQx, qy: st.boxQy, qz: st.boxQz, qw: st.boxQw,
-            grabbed: !!st.grabbed,
-          };
+        if (st.activeBoxes) {
+          for (const [idStr, bState] of Object.entries(st.activeBoxes)) {
+            const boxId = parseInt(idStr);
+            const prevBoxTs = this._boxTimestamps.get(boxId) ?? -1;
+            if (ts >= prevBoxTs) {
+              this._boxTimestamps.set(boxId, ts);
+              this._boxStates.set(boxId, {
+                x: bState.boxX, y: bState.boxY, z: bState.boxZ,
+                qx: bState.boxQx, qy: bState.boxQy, qz: bState.boxQz, qw: bState.boxQw,
+                grabbed: !!bState.grabbed,
+              });
+              if (!bState.grabbed) {
+                const boxDef = window.__boxes?.find(b => b.id === boxId);
+                if (boxDef) {
+                  const b = boxDef.body;
+                  b.position.set(bState.boxX, bState.boxY, bState.boxZ);
+                  b.quaternion.set(bState.boxQx, bState.boxQy, bState.boxQz, bState.boxQw);
+                  b.velocity.set(0, 0, 0);
+                  b.angularVelocity.set(0, 0, 0);
+                  b.aabbNeedsUpdate = true;
+                }
+              }
+            }
+          }
+        } else if (st.boxX !== undefined && st.boxId !== undefined) {
+          const prevTs = this._boxTimestamps.get(st.boxId) ?? -1;
+          if (ts >= prevTs) {
+            this._boxTimestamps.set(st.boxId, ts);
+            this._boxStates.set(st.boxId, {
+              x: st.boxX, y: st.boxY, z: st.boxZ,
+              qx: st.boxQx, qy: st.boxQy, qz: st.boxQz, qw: st.boxQw,
+              grabbed: !!st.grabbed,
+            });
+            if (!st.grabbed) {
+              const boxDef = window.__boxes?.find(b => b.id === st.boxId);
+              if (boxDef) {
+                const b = boxDef.body;
+                b.position.set(st.boxX, st.boxY, st.boxZ);
+                b.quaternion.set(st.boxQx, st.boxQy, st.boxQz, st.boxQw);
+                b.velocity.set(0, 0, 0);
+                b.angularVelocity.set(0, 0, 0);
+                b.aabbNeedsUpdate = true;
+              }
+            }
+          }
         }
         break;
       }
@@ -141,9 +188,7 @@ export class MultiuserSync {
         this.remoteStates.delete(msg.robotIndex);
         this.remoteTimestamps.delete(msg.robotIndex);
         this.owners.delete(msg.robotIndex);
-        if (this.remoteHeld?.robotIndex === msg.robotIndex) {
-          this.remoteHeld = null;
-        }
+        this.remoteHeld.delete(msg.robotIndex);
         break;
       }
 
@@ -151,7 +196,23 @@ export class MultiuserSync {
         this.owners.set(msg.robotIndex, msg.clientId);
         break;
       }
+
+      case 'mu_create_robot': {
+        if (this.onNewRobot) {
+          this.onNewRobot(msg.robotData);
+        }
+        break;
+      }
     }
+  }
+
+  broadcastNewRobot(robotData) {
+    if (!this.connected || !this.clientId) return;
+    this.ws.send(JSON.stringify({
+      type: 'mu_create_robot',
+      clientId: this.clientId,
+      robotData
+    }));
   }
 
   claimNextRobot() {
@@ -243,23 +304,61 @@ export class MultiuserSync {
 
     const state = this.getState(robot);
 
-    const b = physicsCtrl?.body;
     state.grabbed = grabbed;
-    if (b) {
-      state.boxX = b.position.x;
-      state.boxY = b.position.y;
-      state.boxZ = b.position.z;
-      state.boxQx = b.quaternion.x;
-      state.boxQy = b.quaternion.y;
-      state.boxQz = b.quaternion.z;
-      state.boxQw = b.quaternion.w;
+    if (physicsCtrl?.body && grabbed) {
+      state.boxId = physicsCtrl.body.__boxId;
     }
 
-    if (!this._hasStateChanged(state)) return false;
-    const prev = this._lastState;
-    this._lastState = state;
+    const activeBoxes = {};
+    let hasBoxUpdates = false;
 
-    const moving = grabbed || !prev || state.grabbed !== prev.grabbed;
+    if (!this._lastSentBoxes) this._lastSentBoxes = new Map();
+
+    if (window.__boxes) {
+      for (const bDef of window.__boxes) {
+        const b = bDef.body;
+        const speedSq = b.velocity.lengthSquared() + b.angularVelocity.lengthSquared();
+        const isMoving = speedSq > 0.005;
+        const isGrabbed = (grabbed && physicsCtrl?.body === b);
+        
+        const last = this._lastSentBoxes.get(b.__boxId);
+        
+        if (isMoving || isGrabbed || (last && last.wasMoving && !isMoving)) {
+          if (!last || isGrabbed ||
+              Math.abs(b.position.x - last.x) > 0.005 ||
+              Math.abs(b.position.y - last.y) > 0.005 ||
+              Math.abs(b.position.z - last.z) > 0.005 ||
+              Math.abs(b.quaternion.x - last.qx) > 0.01 ||
+              Math.abs(b.quaternion.y - last.qy) > 0.01 ||
+              Math.abs(b.quaternion.z - last.qz) > 0.01 ||
+              Math.abs(b.quaternion.w - last.qw) > 0.01) {
+              
+            activeBoxes[b.__boxId] = {
+              boxId: b.__boxId,
+              boxX: b.position.x, boxY: b.position.y, boxZ: b.position.z,
+              boxQx: b.quaternion.x, boxQy: b.quaternion.y, boxQz: b.quaternion.z, boxQw: b.quaternion.w,
+              grabbed: isGrabbed
+            };
+            this._lastSentBoxes.set(b.__boxId, { 
+              wasMoving: isMoving || isGrabbed,
+              x: b.position.x, y: b.position.y, z: b.position.z,
+              qx: b.quaternion.x, qy: b.quaternion.y, qz: b.quaternion.z, qw: b.quaternion.w
+            });
+            hasBoxUpdates = true;
+          }
+        }
+      }
+    }
+
+    if (hasBoxUpdates) state.activeBoxes = activeBoxes;
+
+    const robotChanged = this._hasStateChanged(state);
+    if (!robotChanged && !hasBoxUpdates) return false;
+
+    const prev = this._lastState;
+    if (robotChanged) this._lastState = state;
+
+    const moving = grabbed || !prev || state.grabbed !== prev.grabbed || hasBoxUpdates;
     const interval = moving ? 30 : 80;
     if (now - this.lastSend < interval) return false;
 
@@ -277,6 +376,7 @@ export class MultiuserSync {
 
   applyRemoteStates() {
     for (const [idx, state] of this.remoteStates) {
+      if (idx === this.robotIndex) continue; // Prevent overwriting local robot state
       const robot = this.robots[idx];
       if (!robot) continue;
 
@@ -301,45 +401,70 @@ export class MultiuserSync {
       if (state.fopen !== undefined) robot.FOPEN = state.fopen;
       if (state.squeeze !== undefined) robot.sqTarget = state.squeeze;
 
-      if (state.grabbed && state.boxX !== undefined) {
-        this.remoteHeld = { robotIndex: idx, state };
-      } else if (!state.grabbed && this.remoteHeld?.robotIndex === idx) {
-        this.remoteHeld = null;
+      if (state.grabbed && state.boxId !== undefined) {
+        const boxState = state.activeBoxes ? state.activeBoxes[state.boxId] : state;
+        if (boxState && boxState.boxX !== undefined) {
+          this.remoteHeld.set(idx, { state: boxState });
+        }
+      } else if (!state.grabbed) {
+        const held = this.remoteHeld.get(idx);
+        if (held && held.state && held.state.boxId !== undefined) {
+          const boxDef = window.__boxes?.find(b => b.id === held.state.boxId);
+          if (boxDef && boxDef.body.type !== CANNON.Body.DYNAMIC) {
+            boxDef.body.type = CANNON.Body.DYNAMIC;
+            boxDef.body.updateMassProperties();
+            boxDef.body.wakeUp();
+          }
+        }
+        this.remoteHeld.delete(idx);
       }
     }
   }
 
-  _applyBoxState() {
-    if (!this._boxState || !this.physicsCtrl?.body) return;
-    const s = this._boxState;
-    const b = this.physicsCtrl.body;
-    b.position.set(s.x, s.y, s.z);
-    b.quaternion.set(s.qx, s.qy, s.qz, s.qw);
-    b.velocity.set(0, 0, 0);
-    b.angularVelocity.set(0, 0, 0);
-    b.aabbNeedsUpdate = true;
+  _applyBoxStatesInit() {
+    for (const [id, s] of this._boxStates.entries()) {
+      const boxDef = window.__boxes?.find(b => b.id === id);
+      if (!boxDef) continue;
+      const b = boxDef.body;
+      b.position.set(s.x, s.y, s.z);
+      b.quaternion.set(s.qx, s.qy, s.qz, s.qw);
+      b.velocity.set(0, 0, 0);
+      b.angularVelocity.set(0, 0, 0);
+      b.aabbNeedsUpdate = true;
+    }
   }
 
   applyRemoteBox() {
-    if (!this.remoteHeld || !this.physicsCtrl?.body) return;
-    const s = this.remoteHeld.state;
-    const b = this.physicsCtrl.body;
-    const lerp = 0.6; // Increased from 0.4 for snappier sync
-    b.position.x += (s.boxX - b.position.x) * lerp;
-    b.position.y += (s.boxY - b.position.y) * lerp;
-    b.position.z += (s.boxZ - b.position.z) * lerp;
-    
-    // Proper quaternion slerp for smooth rotation
-    const currentQ = new CANNON.Quaternion(b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w);
-    const targetQ = new CANNON.Quaternion(s.boxQx, s.boxQy, s.boxQz, s.boxQw);
-    currentQ.slerp(targetQ, lerp, currentQ);
-    b.quaternion.copy(currentQ);
-    b.velocity.set(0, 0, 0);
-    b.angularVelocity.set(0, 0, 0);
-    b.aabbNeedsUpdate = true;
+    if (this.remoteHeld.size === 0) return;
+    for (const held of this.remoteHeld.values()) {
+      const s = held.state;
+      if (s.boxId === undefined) continue;
+      const boxDef = window.__boxes?.find(b => b.id === s.boxId);
+      if (!boxDef) continue;
+      const b = boxDef.body;
+      
+      if (b.type !== CANNON.Body.KINEMATIC) {
+        b.type = CANNON.Body.KINEMATIC;
+        b.updateMassProperties();
+      }
+      
+      const lerp = 0.6; // Increased from 0.4 for snappier sync
+      b.position.x += (s.boxX - b.position.x) * lerp;
+      b.position.y += (s.boxY - b.position.y) * lerp;
+      b.position.z += (s.boxZ - b.position.z) * lerp;
+      
+      // Proper quaternion slerp for smooth rotation
+      const currentQ = new CANNON.Quaternion(b.quaternion.x, b.quaternion.y, b.quaternion.z, b.quaternion.w);
+      const targetQ = new CANNON.Quaternion(s.boxQx, s.boxQy, s.boxQz, s.boxQw);
+      currentQ.slerp(targetQ, lerp, currentQ);
+      b.quaternion.copy(currentQ);
+      b.velocity.set(0, 0, 0);
+      b.angularVelocity.set(0, 0, 0);
+      b.aabbNeedsUpdate = true;
+    }
   }
 
   isRemoteGrabbed() {
-    return this.remoteHeld !== null;
+    return this.remoteHeld.size > 0;
   }
 }

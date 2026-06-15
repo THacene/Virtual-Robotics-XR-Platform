@@ -7,7 +7,7 @@ import { Robot3D } from './core/Robot3D.js';
 import { makeDescription } from './core/defaultDescription.js';
 import { FingerSensor } from './sensors/FingerSensor.js';
 import { Environment } from './environment/Environment.js';
-import { buildFactory, checkFactoryCollision , updateFactory } from './environment/factory.js';
+import { buildFactory, checkFactoryCollision, updateFactory } from './environment/factory.js';
 import { updateTelemetry } from './ui/telemetry.js';
 import { smartGripUpdate } from './logic/gripLogic.js';
 import { log } from './ui/log.js';
@@ -158,7 +158,7 @@ function makeKinematicSphere(radius) {
   return b;
 }
 
-const playerHeadBody  = makeKinematicSphere(0.15);
+const playerHeadBody = makeKinematicSphere(0.15);
 const playerHandLBody = makeKinematicSphere(0.08);
 const playerHandRBody = makeKinematicSphere(0.08);
 let _playerBodiesInWorld = false;
@@ -407,16 +407,17 @@ document.addEventListener('keydown', e => {
 
 // ===== ROBOT PICKER POPUP =====
 const _rpOverlay = document.getElementById('robotPickerOverlay');
-const _rpBody    = document.getElementById('robotPickerBody');
+const _rpBody = document.getElementById('robotPickerBody');
 let _rpOpen = false;
 
 // Robot metadata for display
 const ROBOT_META = [
-  { name: 'Robot 1', type: 'Standard Arm',   color: '#4488BB' },
-  { name: 'Robot 2', type: 'ABB Industrial',  color: '#CC2936' },
-  { name: 'Robot 3', type: 'Fanuc Cobot',     color: '#E8B931' },
-  { name: 'Robot 4', type: 'Cobot',           color: '#44BBAA' },
+  { name: 'Robot 1', type: 'Standard Arm', color: '#4488BB' },
+  { name: 'Robot 2', type: 'ABB Industrial', color: '#CC2936' },
+  { name: 'Robot 3', type: 'Fanuc Cobot', color: '#E8B931' },
+  { name: 'Robot 4', type: 'Cobot', color: '#44BBAA' },
 ];
+window.ROBOT_META = ROBOT_META;
 
 function openRobotPicker() {
   if (_rpOpen) return;
@@ -442,7 +443,7 @@ function populateRobotPicker() {
 
   for (let i = 0; i < robots.length; i++) {
     const meta = ROBOT_META[i] || { name: `Robot ${i + 1}`, type: 'Unknown', color: '#888' };
-    const st   = statuses[i] || { index: i, isFree: true, isYours: i === activeIdx, ownerClientId: null };
+    const st = statuses[i] || { index: i, isFree: true, isYours: i === activeIdx, ownerClientId: null };
 
     const item = document.createElement('div');
     item.className = 'rp-item';
@@ -712,6 +713,16 @@ multiuser.onReady = (robotIdx) => {
   updateActiveBadge();
   log(`🌐 Multi-user: controlling Robot ${robotIdx + 1}`, 'ok');
 };
+multiuser.onSyncDynamicRobots = (dynamicRobots) => {
+  const currentDynamicCount = robots.length - 4;
+  for (let i = currentDynamicCount; i < dynamicRobots.length; i++) {
+    createRobotFromData(dynamicRobots[i]);
+  }
+};
+multiuser.onNewRobot = (rData) => {
+  createRobotFromData(rData);
+  updateActiveBadge();
+};
 multiuser.connect();
 
 // ===== UI ELEMENTS (بعد كل التعريفات) =====
@@ -777,8 +788,8 @@ renderer.setAnimationLoop(function mainLoop() {
   const now = performance.now();
   const dt = Math.min((now - _lastTime) / 1000, 0.05);
   _lastTime = now;
-  
-    updateFactory(now);   // ✅ أضف هذا السطر هنا
+
+  updateFactory(now);   // ✅ أضف هذا السطر هنا
 
 
   applyKeyboardToActive();
@@ -788,8 +799,25 @@ renderer.setAnimationLoop(function mainLoop() {
   if (_vrCtrlMgr) _vrCtrlMgr.update(dt);
   if (_handTracker) _handTracker.update(dt);
   if (_vrUI) {
-    const xrRay = _vrCtrlMgr ? _vrCtrlMgr.getRay('right') : null;
-    const xrTrigger = _vrCtrlMgr?.srcR?.gamepad?.buttons[0]?.pressed ?? false;
+    const inputs = [];
+
+    // Right input (Controller or Hand)
+    const rayR = _vrCtrlMgr ? _vrCtrlMgr.getRay('right') : null;
+    const triggerR = (_vrCtrlMgr?.triggerR ?? false) || (_handTracker?._pinchR ?? false);
+    if (rayR || triggerR) inputs.push({ id: 'right', ray: rayR, triggerPressed: triggerR });
+
+    // Left input (Controller or Hand)
+    const rayL = _vrCtrlMgr ? _vrCtrlMgr.getRay('left') : null;
+    const triggerL = (_vrCtrlMgr?.triggerL ?? false) || (_handTracker?._pinchL ?? false);
+    if (rayL || triggerL) inputs.push({ id: 'left', ray: rayL, triggerPressed: triggerL });
+
+    // Direct Touch inputs (physical UI touching)
+    if (_handTracker && _handTracker.indexTipR) {
+      inputs.push({ id: 'right_touch', touchPos: _handTracker.indexTipR });
+    }
+    if (_handTracker && _handTracker.indexTipL) {
+      inputs.push({ id: 'left_touch', touchPos: _handTracker.indexTipL });
+    }
 
     // Read stats from DOM (populated by telemetry.js)
     const statsData = {
@@ -810,13 +838,13 @@ renderer.setAnimationLoop(function mainLoop() {
       robots: multiuser ? multiuser.getRobotStatuses() : [],
       visionCanvas: document.getElementById('camCanvas'),
     };
-    
+
     // Force camera rendering if VRUI is displaying it
     if (typeof vision !== 'undefined' && vision) {
       vision.forceRender = (_vrUI._view === 'camera');
     }
 
-    _vrUI.update(dt, xrRay, xrTrigger, statsData);
+    _vrUI.update(dt, inputs, statsData);
   }
 
   // ── Sync player physics bodies (head + hands) to XR positions ──
@@ -870,16 +898,13 @@ renderer.setAnimationLoop(function mainLoop() {
   sv('sA2', active.jCurrent.elbow); lv('vA2', active.jCurrent.elbow);
   sv('sW', active.jCurrent.wrist); lv('vW', active.jCurrent.wrist);
 
-  const isRemoteGrab = muMode && multiuser.isRemoteGrabbed();
-  if (isRemoteGrab) {
-    multiuser.applyRemoteBox();
-    world.step(1 / 60, dt, 6);
-    multiuser.applyRemoteBox();
-  } else {
-    if (grabbed) physicsCtrl.freeze(); else physicsCtrl.release();
-    world.step(1 / 60, dt, 6);
-    if (grabbed) applyGripOffset();
-  }
+  if (grabbed) physicsCtrl.freeze(); else physicsCtrl.release();
+  if (muMode) multiuser.applyRemoteBox();
+
+  world.step(1 / 60, dt, 6);
+
+  if (grabbed) applyGripOffset();
+  if (muMode) multiuser.applyRemoteBox();
   env.update();
 
   for (const set of allFingerSensors)
@@ -993,17 +1018,17 @@ function xrResetJoints() {
 // ── Setup all VR interaction systems ──
 function setupXRSystems() {
   const xrCb = {
-    grab: () => {
-      // Skip grab when interacting with VR UI
-      if (_vrUI && _vrUI.visible && _vrUI._hoveredEl) return;
+    grab: (force = false) => {
+      // Skip grab when interacting with VR UI unless forced by the UI button itself
+      if (!force && _vrUI && _vrUI.visible && _vrUI._hoveredEl) return;
       actuateGrab();
     },
-    release:      () => actuateRelease(),
-    switchRobot:  xrSwitchRobot,
-    claimRobot:   (idx) => { if (multiuser) multiuser.claimRobot(idx); },
-    getActive:    () => getActive(),
-    moveJoint:    (name, deg) => getActive().moveJoint(name, deg),
-    setDrive:     (s, t) => {
+    release: () => actuateRelease(),
+    switchRobot: xrSwitchRobot,
+    claimRobot: (idx) => { if (multiuser) multiuser.claimRobot(idx); },
+    getActive: () => getActive(),
+    moveJoint: (name, deg) => getActive().moveJoint(name, deg),
+    setDrive: (s, t) => {
       const active = getActive(); active.setDrive(s, t);
       for (const r of robots) if (r !== active) r.setDrive(0, 0);
     },
@@ -1015,8 +1040,8 @@ function setupXRSystems() {
       const openMM = 55 - clamped * (55 - 14);
       a.setOpen(openMM / 100);
     },
-    resetJoints:  xrResetJoints,
-    toggleUI:     () => { if (_vrUI) _vrUI.toggle(); },
+    resetJoints: xrResetJoints,
+    toggleUI: () => { if (_vrUI) _vrUI.toggle(); },
     openCameraVision: () => {
       if (_vrUI) {
         _vrUI.show();
@@ -1029,7 +1054,7 @@ function setupXRSystems() {
         _vrUI._view = 'robots';
       }
     },
-    getGrabbed:   () => grabbed,
+    getGrabbed: () => grabbed,
     getActiveIdx: () => activeIdx,
     getStatus: () => {
       if (grabbed) return 'GRIP ACTIVE';
@@ -1114,8 +1139,8 @@ function setupXRSystems() {
 
 // ── Cleanup all VR systems ──
 function cleanupXRSystems() {
-  if (_vrCtrlMgr)   { _vrCtrlMgr.dispose();   _vrCtrlMgr = null; }
-  if (_vrUI)        { _vrUI.dispose();        _vrUI = null; }
+  if (_vrCtrlMgr) { _vrCtrlMgr.dispose(); _vrCtrlMgr = null; }
+  if (_vrUI) { _vrUI.dispose(); _vrUI = null; }
   if (_handTracker) { _handTracker.dispose(); _handTracker = null; }
   _xrCtrlR = null; _xrCtrlL = null;
 }
@@ -1130,9 +1155,9 @@ async function startXRSession(mode) {
     _xrSess = session;
     await renderer.xr.setSession(session);
 
-    if (mode === 'immersive-ar') { 
-      scene.background = null; 
-      renderer.setClearAlpha(0); 
+    if (mode === 'immersive-ar') {
+      scene.background = null;
+      renderer.setClearAlpha(0);
       if (factoryGroup) factoryGroup.visible = false;
     }
 
@@ -1146,9 +1171,9 @@ async function startXRSession(mode) {
 
     session.addEventListener('end', () => {
       _xrSess = null;
-      if (mode === 'immersive-ar') { 
-        scene.background = new THREE.Color(0x8a9aaa); 
-        renderer.setClearAlpha(1); 
+      if (mode === 'immersive-ar') {
+        scene.background = new THREE.Color(0x8a9aaa);
+        renderer.setClearAlpha(1);
         if (factoryGroup) factoryGroup.visible = true;
       }
       removePlayerBodiesFromWorld();
@@ -1374,20 +1399,20 @@ window.__handoff = {
 //  ROBOT CREATOR MODAL — Phase 1
 //  Full interactive modal: config + preview + mini factory map
 // ═══════════════════════════════════════════════════════════════
-const _rcOverlay   = document.getElementById('robotCreatorOverlay');
-const _rcPanel     = document.getElementById('robotCreatorPanel');
-const _rcName      = document.getElementById('rcName');
-const _rcType      = document.getElementById('rcType');
-const _rcColors    = document.getElementById('rcColors');
-const _rcArmLen    = document.getElementById('rcArmLen');
+const _rcOverlay = document.getElementById('robotCreatorOverlay');
+const _rcPanel = document.getElementById('robotCreatorPanel');
+const _rcName = document.getElementById('rcName');
+const _rcType = document.getElementById('rcType');
+const _rcColors = document.getElementById('rcColors');
+const _rcArmLen = document.getElementById('rcArmLen');
 const _rcArmLenVal = document.getElementById('rcArmLenVal');
-const _rcSpeed     = document.getElementById('rcSpeed');
-const _rcSpeedVal  = document.getElementById('rcSpeedVal');
-const _rcGrip      = document.getElementById('rcGrip');
-const _rcGripVal   = document.getElementById('rcGripVal');
+const _rcSpeed = document.getElementById('rcSpeed');
+const _rcSpeedVal = document.getElementById('rcSpeedVal');
+const _rcGrip = document.getElementById('rcGrip');
+const _rcGripVal = document.getElementById('rcGripVal');
 const _rcMapCoords = document.getElementById('rcMapCoords');
 const _rcMapCanvas = document.getElementById('rcMapCanvas');
-const _rcPrevCanvas= document.getElementById('rcPreviewCanvas');
+const _rcPrevCanvas = document.getElementById('rcPreviewCanvas');
 
 let _rcOpen = false;
 let _rcSelectedColor = 0xF7931E;  // Default KUKA orange
@@ -1905,6 +1930,47 @@ function stopRobotPreview() {
 // ═══════════════════════════════════════════════════════
 //  DEPLOY ROBOT — Creates a new Robot3D instance
 // ═══════════════════════════════════════════════════════
+function createRobotFromData(data) {
+  const overrides = {
+    type: data.type,
+    arm: {
+      shoulder: { color: data.armColor, len: data.armLen },
+      elbow: { color: data.darkerColor, len: data.armLen * 0.63 },
+      palm: { color: 0x78818C },
+    },
+    base: {
+      body: { color: data.bodyColor },
+      accentColor: data.accentColor,
+    },
+    finger: { color: 0xA0A8B0 },
+    movement: { speed: data.speed },
+    grip: { maxForce: data.gripForce },
+  };
+
+  const newRobot = new Robot3D(makeDescription(overrides), ctx);
+  newRobot.setPosition(data.deployX, data.deployZ);
+  robots.push(newRobot);
+
+  ROBOT_META.push({
+    name: data.name,
+    type: data.type === 'cobot' ? 'Cobot' : 'Industrial',
+    color: '#' + (data.armColor & 0xFFFFFF).toString(16).padStart(6, '0'),
+  });
+
+  allFingerSensors.push({
+    left: new FingerSensor('left',
+      newRobot.parts.fingers.left.group.children[0],
+      newRobot.parts.fingers.left.body,
+      newRobot.description,
+      { robot: robotApi, logger: log }),
+    right: new FingerSensor('right',
+      newRobot.parts.fingers.right.group.children[0],
+      newRobot.parts.fingers.right.body,
+      newRobot.description,
+      { robot: robotApi, logger: log }),
+  });
+}
+
 document.getElementById('btnDeployRobot')?.addEventListener('click', () => {
   const robotName = _rcName.value.trim() || `Robot ${robots.length + 1}`;
   const robotType = _rcType.value;
@@ -1920,64 +1986,39 @@ document.getElementById('btnDeployRobot')?.addEventListener('click', () => {
   const accentColor = robotType === 'cobot' ? 0x2C7AB5 : armColor;
   const bodyColor = robotType === 'cobot' ? 0xBFC5CC : 0x5C6370;
 
-  // Create description overrides
-  const overrides = {
+  const rData = {
+    name: robotName,
     type: robotType,
-    arm: {
-      shoulder: { color: armColor, len: armLen },
-      elbow: { color: darkerColor, len: armLen * 0.63 },
-      palm: { color: 0x78818C },
-    },
-    base: {
-      body: { color: bodyColor },
-      accentColor: accentColor,
-    },
-    finger: { color: 0xA0A8B0 },
-    movement: { speed: speed },
-    grip: { maxForce: gripForce },
+    armColor: armColor,
+    darkerColor: darkerColor,
+    bodyColor: bodyColor,
+    accentColor: accentColor,
+    armLen: armLen,
+    speed: speed,
+    gripForce: gripForce,
+    deployX: deployX,
+    deployZ: deployZ
   };
 
-  // Create the new robot
-  const newRobot = new Robot3D(makeDescription(overrides), ctx);
-  newRobot.setPosition(deployX, deployZ);
-
-  // Add to robots array
-  robots.push(newRobot);
-
-  // Add metadata
-  const colorHex = '#' + (armColor & 0xFFFFFF).toString(16).padStart(6, '0');
-  ROBOT_META.push({
-    name: robotName,
-    type: robotType === 'cobot' ? 'Cobot' : 'Industrial',
-    color: colorHex,
-  });
-
-  // Create FingerSensors for the new robot
-  allFingerSensors.push({
-    left: new FingerSensor('left',
-      newRobot.parts.fingers.left.group.children[0],
-      newRobot.parts.fingers.left.body,
-      newRobot.description,
-      { robot: robotApi, logger: log }),
-    right: new FingerSensor('right',
-      newRobot.parts.fingers.right.group.children[0],
-      newRobot.parts.fingers.right.body,
-      newRobot.description,
-      { robot: robotApi, logger: log }),
-  });
+  createRobotFromData(rData);
 
   // Switch to the new robot
   const prev = getActive();
   prev.setDrive(0, 0);
   if (!grabbed) prev.setSqueeze(0);
   activeIdx = robots.length - 1;
-  robotApi.setRobot3D(newRobot);
+  robotApi.setRobot3D(getActive());
   syncSlidersToActive();
   updateActiveBadge();
 
   // Log
   log(`🤖 Deployed "${robotName}" at (${deployX.toFixed(1)}, ${deployZ.toFixed(1)})`, 'ok');
   console.log(`[RobotCreator] Deployed ${robotName} — type=${robotType}, color=0x${armColor.toString(16)}, pos=(${deployX.toFixed(1)}, ${deployZ.toFixed(1)})`);
+
+  if (muMode && multiuser) {
+    multiuser.broadcastNewRobot(rData);
+    multiuser.claimRobot(robots.length - 1);
+  }
 
   closeRobotCreator();
 });

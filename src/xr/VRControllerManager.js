@@ -4,6 +4,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160/build/three.module.js";
+import { XRControllerModelFactory } from "https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/webxr/XRControllerModelFactory.js";
 
 const JOINT_SPEED = 65;   // degrees per second for joint control
 const BASE_SPEED  = 50;   // degrees per second for base rotation
@@ -34,6 +35,10 @@ export class VRControllerManager {
     // XRInputSource references (set on 'connected')
     this.srcR = null;  this.srcL = null;
 
+    // Trigger states
+    this.triggerR = false;
+    this.triggerL = false;
+
     // Edge-detection for buttons
     this._prev = { left: {}, right: {} };
 
@@ -57,19 +62,21 @@ export class VRControllerManager {
     this.gripR = r.xr.getControllerGrip(0);
     this.gripL = r.xr.getControllerGrip(1);
 
-    // Visual models
-    this._modelR = this._buildModel(0x00ccff);
-    this._modelL = this._buildModel(0xff8833);
+    const controllerModelFactory = new XRControllerModelFactory();
+
+    this._modelR = controllerModelFactory.createControllerModel(this.gripR);
     this.gripR.add(this._modelR);
+
+    this._modelL = controllerModelFactory.createControllerModel(this.gripL);
     this.gripL.add(this._modelL);
 
     // Mode indicator on right controller
     this._modeIndicatorR = this._buildModeIndicator();
-    this._modelR.add(this._modeIndicatorR);
+    this.gripR.add(this._modeIndicatorR);
 
-    // Rays
-    this.rayR = this._buildRay(0x00ffdd, 4);
-    this.rayL = this._buildRay(0xffaa55, 2.5);
+    // Rays (shorter so they don't 'go too far away' into the distance)
+    this.rayR = this._buildRay(0x00ffdd, 1.5);
+    this.rayL = this._buildRay(0xffaa55, 1.2);
     this.ctrlR.add(this.rayR);
     this.ctrlL.add(this.rayL);
 
@@ -81,15 +88,28 @@ export class VRControllerManager {
 
     // Trigger R → grab / release
     this.ctrlR.addEventListener('selectstart', () => {
+      this.triggerR = true;
+      if (this.srcR?.hand) return;
       this.cb.grab();
       this._haptic('right', 0.6, 80);
     });
     this.ctrlR.addEventListener('selectend', () => {
+      this.triggerR = false;
+      if (this.srcR?.hand) return;
       this.cb.release();
+    });
+
+    // Trigger L (for UI interaction with left hand if needed)
+    this.ctrlL.addEventListener('selectstart', () => {
+      this.triggerL = true;
+    });
+    this.ctrlL.addEventListener('selectend', () => {
+      this.triggerL = false;
     });
 
     // Squeeze L → switch robot
     this.ctrlL.addEventListener('squeezestart', () => {
+      if (this.srcL?.hand) return;
       this.cb.switchRobot();
       this._haptic('left', 0.35, 50);
     });
@@ -122,6 +142,7 @@ export class VRControllerManager {
 
   // ─────────────────── RIGHT controller ───────────────────
   _tickRight(dt) {
+    if (this.srcR?.hand) return; // Do not control robot with hands
     const gp = this.srcR?.gamepad;
     if (!gp) return;
     const active = this.cb.getActive();
@@ -140,18 +161,18 @@ export class VRControllerManager {
     if (this.jointMode === 0) {
       // Mode 0 — Shoulder (Y) + Elbow (X)
       if (Math.abs(ty) > DEAD_ZONE) {
-        this.cb.moveJoint('shoulder', active.jCurrent.shoulder + (-ty * JOINT_SPEED * dt));
+        this.cb.moveJoint('shoulder', active.jTarget.shoulder + (-ty * JOINT_SPEED * dt));
       }
       if (Math.abs(tx) > DEAD_ZONE) {
-        this.cb.moveJoint('elbow', active.jCurrent.elbow + (tx * JOINT_SPEED * dt));
+        this.cb.moveJoint('elbow', active.jTarget.elbow + (tx * JOINT_SPEED * dt));
       }
     } else {
       // Mode 1 — Base (X) + Wrist (Y)
       if (Math.abs(tx) > DEAD_ZONE) {
-        this.cb.moveJoint('base', active.jCurrent.base + (tx * BASE_SPEED * dt));
+        this.cb.moveJoint('base', active.jTarget.base + (tx * BASE_SPEED * dt));
       }
       if (Math.abs(ty) > DEAD_ZONE) {
-        this.cb.moveJoint('wrist', active.jCurrent.wrist + (-ty * JOINT_SPEED * dt));
+        this.cb.moveJoint('wrist', active.jTarget.wrist + (-ty * JOINT_SPEED * dt));
       }
     }
 
@@ -177,6 +198,7 @@ export class VRControllerManager {
 
   // ─────────────────── LEFT controller ───────────────────
   _tickLeft(dt) {
+    if (this.srcL?.hand) return; // Do not control robot with hands
     const gp = this.srcL?.gamepad;
     if (!gp) return;
     const active = this.cb.getActive();
@@ -242,48 +264,6 @@ export class VRControllerManager {
   }
 
   // ─────────────────── Visuals ───────────────────
-  _buildModel(accentColor) {
-    const g = new THREE.Group();
-
-    // Handle
-    const hGeo = new THREE.CylinderGeometry(0.013, 0.018, 0.11, 8);
-    const hMat = new THREE.MeshStandardMaterial({ color: 0x2a2a3a, metalness: 0.85, roughness: 0.25 });
-    const handle = new THREE.Mesh(hGeo, hMat);
-    handle.rotation.x = -Math.PI / 7;
-    g.add(handle);
-
-    // Body
-    const bGeo = new THREE.BoxGeometry(0.038, 0.022, 0.075);
-    const bMat = new THREE.MeshStandardMaterial({ color: 0x1e1e2e, metalness: 0.7, roughness: 0.35 });
-    const body = new THREE.Mesh(bGeo, bMat);
-    body.position.set(0, 0.022, -0.018);
-    g.add(body);
-
-    // Accent ring
-    const rGeo = new THREE.TorusGeometry(0.020, 0.0025, 8, 20);
-    const rMat = new THREE.MeshStandardMaterial({
-      color: accentColor, emissive: accentColor, emissiveIntensity: 0.6,
-      metalness: 0.9, roughness: 0.15,
-    });
-    const ring = new THREE.Mesh(rGeo, rMat);
-    ring.position.set(0, 0.036, -0.018);
-    ring.rotation.x = Math.PI / 2;
-    g.add(ring);
-
-    // Front tip glow
-    const tGeo = new THREE.SphereGeometry(0.004, 8, 8);
-    const tMat = new THREE.MeshBasicMaterial({ color: accentColor, transparent: true, opacity: 0.85 });
-    const tip = new THREE.Mesh(tGeo, tMat);
-    tip.position.set(0, 0.036, -0.055);
-    g.add(tip);
-
-    // Point light for ambiance
-    const pl = new THREE.PointLight(accentColor, 0.15, 0.4);
-    pl.position.copy(tip.position);
-    g.add(pl);
-
-    return g;
-  }
 
   _buildRay(color, len) {
     const pts = [new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -len)];

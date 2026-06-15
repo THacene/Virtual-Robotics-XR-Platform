@@ -22,8 +22,9 @@ let webSockets = [];
 const muClients = {};           // clientId -> { ws, robotIndex }
 const muRobotOwners = {};       // robotIndex -> clientId
 const muRobotStates = {};       // robotIndex -> last known state
-let muBoxState = null;          // latest box position from any client
-const TOTAL_ROBOTS = 4;
+const muBoxStates = {};         // boxId -> latest box position from any client
+const muDynamicRobots = [];     // dynamically created robots
+let TOTAL_ROBOTS = 4;
 let muNextId = 1;
 
 function muBroadcast(msg, excludeId = null) {
@@ -85,12 +86,12 @@ wss.on('connection', function(ws, req) {
     totalRobots: TOTAL_ROBOTS
   }));
 
-  // Send current states of all other robots + box position
+  // Send current states of all other robots + box position + dynamic robots
   const syncAll = {};
   for (const ri of Object.keys(muRobotStates)) {
     syncAll[ri] = muRobotStates[ri];
   }
-  ws.send(JSON.stringify({ type: 'mu_sync_all', states: syncAll, box: muBoxState, owners: muRobotOwners }));
+  ws.send(JSON.stringify({ type: 'mu_sync_all', states: syncAll, boxes: muBoxStates, owners: muRobotOwners, dynamicRobots: muDynamicRobots }));
 
   // Broadcast new client to everyone else
   muBroadcast({ type: 'mu_join', clientId, robotIndex: robotIdx }, clientId);
@@ -100,13 +101,31 @@ wss.on('connection', function(ws, req) {
     log(ws.terminalId + " >> " + message.type);
 
     // ── Multiuser message handling ──
+    if (message.type === 'mu_create_robot') {
+      const newRobotData = message.robotData;
+      muDynamicRobots.push(newRobotData);
+      TOTAL_ROBOTS++;
+      muBroadcast(message, clientId); // Broadcast the creation to everyone else
+      return;
+    }
+
     if (message.type === 'mu_state') {
       // Store last known state for this robot
       muRobotStates[message.robotIndex] = message.state;
       // Extract + store global box position from any client
       const st = message.state;
-      if (st.boxX !== undefined) {
-        muBoxState = {
+      if (st.activeBoxes) {
+        for (const [id, bState] of Object.entries(st.activeBoxes)) {
+          muBoxStates[id] = {
+            boxId: parseInt(id),
+            x: bState.boxX, y: bState.boxY, z: bState.boxZ,
+            qx: bState.boxQx, qy: bState.boxQy, qz: bState.boxQz, qw: bState.boxQw,
+            grabbed: !!bState.grabbed,
+            t: message.t ?? Date.now()
+          };
+        }
+      } else if (st.boxX !== undefined && st.boxId !== undefined) {
+        muBoxStates[st.boxId] = {
           x: st.boxX, y: st.boxY, z: st.boxZ,
           qx: st.boxQx, qy: st.boxQy, qz: st.boxQz, qw: st.boxQw,
           grabbed: !!st.grabbed,

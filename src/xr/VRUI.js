@@ -14,33 +14,33 @@ const PANEL_W = 0.48;
 const PANEL_H = PANEL_W * (CH / CW);
 
 // ── Layout constants ──
-const PAD      = 20;
+const PAD = 20;
 const SLIDER_H = 32;
 const SLIDER_GAP = 54;
-const BTN_H    = 38;
-const BTN_GAP  = 46;
+const BTN_H = 38;
+const BTN_GAP = 46;
 
 // ── Colours ──
 const C = {
-  bg:       'rgba(12, 16, 24, 0.88)',
-  panelBg:  'rgba(18, 24, 34, 0.92)',
-  border:   'rgba(255, 204, 0, 0.28)',
-  accent:   '#ffcc00',
-  accentDim:'rgba(255,204,0,0.35)',
-  text:     '#d0d8e0',
-  textDim:  '#5a6a7a',
+  bg: 'rgba(12, 16, 24, 0.88)',
+  panelBg: 'rgba(18, 24, 34, 0.92)',
+  border: 'rgba(255, 204, 0, 0.28)',
+  accent: '#ffcc00',
+  accentDim: 'rgba(255,204,0,0.35)',
+  text: '#d0d8e0',
+  textDim: '#5a6a7a',
   sliderBg: 'rgba(255,255,255,0.08)',
-  sliderFill:'#ffcc00',
-  btnBg:    'rgba(255,255,255,0.06)',
+  sliderFill: '#ffcc00',
+  btnBg: 'rgba(255,255,255,0.06)',
   btnHover: 'rgba(255,255,255,0.14)',
-  btnGrab:  'rgba(46,138,80,0.35)',
-  btnRelease:'rgba(204,51,34,0.35)',
+  btnGrab: 'rgba(46,138,80,0.35)',
+  btnRelease: 'rgba(204,51,34,0.35)',
   btnReset: 'rgba(74,106,138,0.35)',
-  btnSwitch:'rgba(150,80,200,0.35)',
-  green:    '#00cc55',
-  red:      '#cc3322',
-  blue:     '#4a88cc',
-  purple:   '#9955cc',
+  btnSwitch: 'rgba(150,80,200,0.35)',
+  green: '#00cc55',
+  red: '#cc3322',
+  blue: '#4a88cc',
+  purple: '#9955cc',
 };
 
 export class VRUI {
@@ -57,7 +57,7 @@ export class VRUI {
   constructor(scene, xrRig, cb) {
     this.scene = scene;
     this.xrRig = xrRig;
-    this.cb    = cb;
+    this.cb = cb;
 
     this._visible = false;
     this._tabActive = false;
@@ -65,7 +65,7 @@ export class VRUI {
 
     // ── Canvas + Texture ──
     this._canvas = document.createElement('canvas');
-    this._canvas.width  = CW;
+    this._canvas.width = CW;
     this._canvas.height = CH;
     this._ctx = this._canvas.getContext('2d');
     this._tex = new THREE.CanvasTexture(this._canvas);
@@ -124,11 +124,11 @@ export class VRUI {
       return s;
     };
     return [
-      mk('base',     'BASE',     -180, 180, C.accent),
+      mk('base', 'BASE', -180, 180, C.accent),
       mk('shoulder', 'SHOULDER', -180, 180, C.blue),
-      mk('elbow',    'ELBOW',    -180, 180, C.green),
-      mk('wrist',    'WRIST',    -180, 180, C.purple),
-      mk('gripper',  'GRIPPER',    14,  55, '#ff8833'),
+      mk('elbow', 'ELBOW', -180, 180, C.green),
+      mk('wrist', 'WRIST', -180, 180, C.purple),
+      mk('gripper', 'GRIPPER', 14, 55, '#ff8833'),
     ];
   }
 
@@ -136,27 +136,39 @@ export class VRUI {
     const bw3 = (CW - PAD * 2 - 20) / 3;
     let y = 390;
     const btns = [
-      { id: 'grab',    label: '✊ GRAB',    x: PAD, y, w: bw3, h: BTN_H, color: C.btnGrab,    view: 'main', action: () => this.cb.grab() },
-      { id: 'release', label: '🤚 RELEASE', x: PAD + bw3 + 10, y, w: bw3, h: BTN_H, color: C.btnRelease, view: 'main', action: () => this.cb.release() },
-      { id: 'reset',   label: '🔄 RESET',   x: PAD + bw3*2 + 20, y, w: bw3, h: BTN_H, color: C.btnReset,  view: 'main', action: () => this.cb.resetJoints() },
+      { id: 'grab', label: '✊ GRAB', x: PAD, y, w: bw3, h: BTN_H, color: C.btnGrab, view: 'main', action: () => {
+          if (typeof window !== 'undefined' && window.autoGrab) {
+            window.autoGrab({ step: 1, interval: 80 });
+          } else {
+            this.cb.grab(true);
+          }
+      } },
+      { id: 'release', label: '🤚 RELEASE', x: PAD + bw3 + 10, y, w: bw3, h: BTN_H, color: C.btnRelease, view: 'main', action: () => {
+          if (typeof window !== 'undefined' && window.autoRelease) {
+            window.autoRelease({ step: 1, interval: 80 });
+          } else {
+            this.cb.release();
+          }
+      } },
+      { id: 'reset', label: '🔄 RESET', x: PAD + bw3 * 2 + 20, y, w: bw3, h: BTN_H, color: C.btnReset, view: 'main', action: () => this.cb.resetJoints() },
     ];
     y += BTN_GAP;
     btns.push(
-      { id: 'switch', label: '🤖 ROBOTS',  x: PAD, y, w: bw3, h: BTN_H, color: C.btnSwitch, view: 'main', action: () => { this._view = 'robots'; } },
-      { id: 'camera', label: '📷 VISION',  x: PAD + bw3 + 10, y, w: bw3, h: BTN_H, color: C.btnReset, view: 'main', action: () => { this._view = 'camera'; } },
-      { id: 'create', label: '➕ CREATE',  x: PAD + bw3*2 + 20, y, w: bw3, h: BTN_H, color: 'rgba(255,204,0,0.25)', view: 'main', action: () => { this._view = 'create'; if (this.cb.openCreator) this.cb.openCreator(); } }
+      { id: 'switch', label: '🤖 ROBOTS', x: PAD, y, w: bw3, h: BTN_H, color: C.btnSwitch, view: 'main', action: () => { this._view = 'robots'; } },
+      { id: 'camera', label: '📷 VISION', x: PAD + bw3 + 10, y, w: bw3, h: BTN_H, color: C.btnReset, view: 'main', action: () => { this._view = 'camera'; } },
+      { id: 'create', label: '➕ CREATE', x: PAD + bw3 * 2 + 20, y, w: bw3, h: BTN_H, color: 'rgba(255,204,0,0.25)', view: 'main', action: () => { this._view = 'create'; if (this.cb.openCreator) this.cb.openCreator(); } }
     );
     y += BTN_GAP;
     btns.push(
-      { id: 'exit',  label: '🚪 EXIT VR',  x: PAD, y, w: CW - PAD * 2, h: 32, color: '#aa3333', view: 'main', action: () => { if (this.cb.exitXR) this.cb.exitXR(); } }
+      { id: 'exit', label: '🚪 EXIT VR', x: PAD, y, w: CW - PAD * 2, h: 32, color: '#aa3333', view: 'main', action: () => { if (this.cb.exitXR) this.cb.exitXR(); } }
     );
 
     // Back buttons
     btns.push(
       { id: 'back_camera', label: '◀ BACK', x: PAD, y: 76, w: 100, h: BTN_H, color: C.btnBg, view: 'camera', action: () => { this._view = 'main'; } },
       { id: 'back_robots', label: '◀ BACK', x: PAD, y: 76, w: 100, h: BTN_H, color: C.btnBg, view: 'robots', action: () => { this._view = 'main'; } },
-      { id: 'back_create', label: '◀ BACK', x: PAD, y: 76, w: 100, h: BTN_H, color: C.btnBg, view: 'create', action: () => { this._view = 'main'; if(this.cb.closeCreator) this.cb.closeCreator(); } },
-      { id: 'deploy_robot', label: '⚡ DEPLOY', x: CW - PAD - 120, y: 76, w: 120, h: BTN_H, color: 'rgba(255,204,0,0.3)', view: 'create', action: () => { if(this.cb.deployCreator) this.cb.deployCreator(); this._view = 'main'; } }
+      { id: 'back_create', label: '◀ BACK', x: PAD, y: 76, w: 100, h: BTN_H, color: C.btnBg, view: 'create', action: () => { this._view = 'main'; if (this.cb.closeCreator) this.cb.closeCreator(); } },
+      { id: 'deploy_robot', label: '⚡ DEPLOY', x: CW - PAD - 120, y: 76, w: 120, h: BTN_H, color: 'rgba(255,204,0,0.3)', view: 'create', action: () => { if (this.cb.deployCreator) this.cb.deployCreator(); this._view = 'main'; } }
     );
 
     return btns;
@@ -167,7 +179,8 @@ export class VRUI {
     if (this._visible) return;
     this._visible = true;
     this.mesh.visible = true;
-    this.mesh.position.set(0, 0, 0); // reset for snap
+    this._needsPositioning = true;
+    this._framesSinceShow = 0;
     this.scene.add(this.mesh);
   }
 
@@ -200,34 +213,69 @@ export class VRUI {
   // ─────────────────── Per-frame update ───────────────────
   /**
    * @param {number} dt
-   * @param {{ origin: THREE.Vector3, direction: THREE.Vector3 }|null} ray
-   *   — from VRControllerManager.getRay('right')
-   * @param {boolean} triggerPressed — is right trigger pressed this frame
+   * @param {Array<{ray: object, triggerPressed: boolean}>} inputs
    * @param {object} statsData — extracted telemetry data
    */
-  update(dt, ray, triggerPressed, statsData = null) {
+  update(dt, inputs, statsData = null) {
     if (statsData) this._statsData = statsData;
+
+    // Backward compatibility for old signature
+    if (!Array.isArray(inputs)) {
+      inputs = [{ id: 'right', ray: inputs, triggerPressed: arguments[2] }];
+      statsData = arguments[3] || null;
+      if (statsData) this._statsData = statsData;
+    }
+
+    if (!this._triggerHeldMap) this._triggerHeldMap = {};
+    if (!this._localPos) this._localPos = new THREE.Vector3();
+    const nextTriggerMap = {};
+
+    let anyTriggerPressed = false;
+    let toggledThisFrame = false;
 
     // ── Always process toggle tab (even when panel hidden) ──
     if (this._tabActive) {
       this._positionTab();
       this._tabHovered = false;
-      if (ray) {
-        this._raycaster.set(ray.origin, ray.direction);
-        const tabHits = this._raycaster.intersectObject(this.tabMesh);
-        if (tabHits.length > 0) {
-          this._tabHovered = true;
-          // Toggle on trigger PRESS (rising edge)
-          if (triggerPressed && !this._triggerHeld) {
-            this.toggle();
+      for (const input of inputs) {
+        const id = input.id || 'default';
+        if (input.triggerPressed) anyTriggerPressed = true;
+        const wasHeld = this._triggerHeldMap[id] || false;
+        
+        if (input.ray) {
+          this._raycaster.set(input.ray.origin, input.ray.direction);
+          const tabHits = this._raycaster.intersectObject(this.tabMesh);
+          if (tabHits.length > 0) {
+            this._tabHovered = true;
+            if (input.triggerPressed && !wasHeld) {
+              toggledThisFrame = true;
+            }
+          }
+        } else if (input.touchPos) {
+          this.tabMesh.worldToLocal(this._localPos.copy(input.touchPos));
+          if (this._localPos.z < 0.02 && this._localPos.z > -0.15 &&
+              this._localPos.x >= -0.075 && this._localPos.x <= 0.075 &&
+              this._localPos.y >= -0.025 && this._localPos.y <= 0.025) {
+            this._tabHovered = true;
+            anyTriggerPressed = true;
+            if (!wasHeld) toggledThisFrame = true;
           }
         }
       }
+      if (toggledThisFrame) this.toggle();
       this._drawTab();
+    } else {
+      for (const input of inputs) {
+        if (input.triggerPressed) anyTriggerPressed = true;
+      }
     }
 
     if (!this._visible) {
-      this._triggerHeld = triggerPressed;
+      for (const input of inputs) {
+        const id = input.id || 'default';
+        nextTriggerMap[id] = input.triggerPressed;
+      }
+      this._triggerHeldMap = nextTriggerMap;
       return;
     }
 
@@ -235,29 +283,50 @@ export class VRUI {
     this._positionPanel();
 
     // ── Raycast interaction with panel ──
+    this._hoverUVs = [];
     this._hoverUV = null;
     this._hoveredEl = null;
 
-    if (ray && !this._tabHovered) {
-      this._raycaster.set(ray.origin, ray.direction);
-      const hits = this._raycaster.intersectObject(this.mesh);
-      if (hits.length > 0 && hits[0].uv) {
-        const u = hits[0].uv;
-        this._hoverUV = { x: u.x * CW, y: (1 - u.y) * CH };
-        this._processInteraction(triggerPressed);
-      } else {
-        if (this._dragging && !triggerPressed) this._dragging = null;
+    for (const input of inputs) {
+      const id = input.id || 'default';
+      const wasHeld = this._triggerHeldMap[id] || false;
+      let triggered = input.triggerPressed || false;
+      let uvPos = null;
+
+      if (input.ray && !this._tabHovered) {
+        this._raycaster.set(input.ray.origin, input.ray.direction);
+        const hits = this._raycaster.intersectObject(this.mesh);
+        if (hits.length > 0 && hits[0].uv) {
+          const u = hits[0].uv;
+          uvPos = { x: u.x * CW, y: (1 - u.y) * CH };
+        }
+      } else if (input.touchPos && !this._tabHovered) {
+        this.mesh.worldToLocal(this._localPos.copy(input.touchPos));
+        if (this._localPos.z < 0.02 && this._localPos.z > -0.15 &&
+            this._localPos.x >= -0.4 && this._localPos.x <= 0.4 &&
+            this._localPos.y >= -0.225 && this._localPos.y <= 0.225) {
+          triggered = true; // Synthetic press
+          const u = (this._localPos.x + 0.4) / 0.8;
+          const v = (this._localPos.y + 0.225) / 0.45;
+          uvPos = { x: u * CW, y: (1 - v) * CH };
+        }
+      }
+
+      nextTriggerMap[id] = triggered;
+      if (triggered) anyTriggerPressed = true;
+
+      if (uvPos) {
+        this._hoverUVs.push(uvPos);
+        this._hoverUV = uvPos; // Used by _processInteraction
+        const isClick = triggered && !wasHeld;
+        this._processInteraction(triggered, isClick);
       }
     }
 
-    if (!triggerPressed) {
-      if (this._triggerHeld && this._hoveredEl) {
-        const btn = this._buttons.find(b => b.id === this._hoveredEl);
-        if (btn) btn.action();
-      }
+    if (!anyTriggerPressed) {
       this._dragging = null;
     }
-    this._triggerHeld = triggerPressed;
+    this._triggerHeldMap = nextTriggerMap;
 
     // ── Redraw canvas ──
     this._draw();
@@ -266,36 +335,43 @@ export class VRUI {
 
   // ─────────────────── Panel positioning (LEFT SIDE) ───────────────────
   _positionPanel() {
+    // If it's already positioned (anchored), don't move it!
+    // This allows the user to lean in and touch it physically without it running away.
+    if (!this._needsPositioning && this.mesh.position.lengthSq() > 0.01) return;
+
     const rp = this.xrRig.position;
     let headPos = new THREE.Vector3(rp.x, rp.y + 1.5, rp.z);
 
     // Try camera for better accuracy
+    let hasGoodCam = false;
     const cam = this.xrRig.children.find(c => c.isCamera);
     if (cam) {
       cam.updateWorldMatrix(true, false);
       const cp = new THREE.Vector3();
       cam.getWorldPosition(cp);
-      if (cp.lengthSq() > 0.5) headPos.copy(cp);
+      if (cp.lengthSq() > 0.1 || this._framesSinceShow > 30) {
+        headPos.copy(cp);
+        hasGoodCam = true;
+      }
     }
 
-    // Panel to the LEFT of the user, slightly angled
+    this._framesSinceShow = (this._framesSinceShow || 0) + 1;
+
+    // Wait until we have a good camera position or timeout
+    if (!hasGoodCam && this._framesSinceShow < 30) {
+      return; // Skip positioning this frame
+    }
+
+    // Anchor to the LEFT of the user, slightly angled
     this._targetPos.set(headPos.x - 0.65, headPos.y - 0.15, headPos.z - 0.9);
-
-    // Snap on first frame, then smooth
-    if (this.mesh.position.lengthSq() < 0.01) {
-      this.mesh.position.copy(this._targetPos);
-    } else {
-      this.mesh.position.lerp(this._targetPos, 0.05);
-    }
+    this.mesh.position.copy(this._targetPos);
 
     // Face the user (swap eye/target so front face points to head)
     const lookMat = new THREE.Matrix4().lookAt(headPos, this.mesh.position, new THREE.Vector3(0, 1, 0));
     const lookQ = new THREE.Quaternion().setFromRotationMatrix(lookMat);
-    if (this.mesh.quaternion.lengthSq() < 0.01) {
-      this.mesh.quaternion.copy(lookQ);
-    } else {
-      this.mesh.quaternion.slerp(lookQ, 0.06);
-    }
+    this.mesh.quaternion.copy(lookQ);
+
+    this._needsPositioning = false;
   }
 
   // ─────────────────── Tab positioning + drawing ───────────────────
@@ -345,7 +421,7 @@ export class VRUI {
   }
 
   // ─────────────────── Interaction processing ───────────────────
-  _processInteraction(triggerPressed) {
+  _processInteraction(triggerPressed, isClick = false) {
     const { x, y } = this._hoverUV;
 
     // Check sliders
@@ -382,7 +458,7 @@ export class VRUI {
       for (let i = 0; i < robots.length; i++) {
         if (x >= PAD && x <= CW - PAD && y >= ty && y <= ty + 46) {
           this._hoveredEl = 'robot_' + i;
-          if (triggerPressed && robots[i].isFree && !robots[i].isYours) {
+          if (isClick && robots[i].isFree && !robots[i].isYours) {
             if (this.cb.claimRobot) this.cb.claimRobot(i);
             this._view = 'main';
           }
@@ -394,24 +470,28 @@ export class VRUI {
     // Check create view interactions (Type, Color, Map)
     if (this._view === 'create') {
       // Type
-      if (x >= PAD && x <= CW/2 - 5 && y >= 140 && y <= 180) {
+      if (x >= PAD && x <= CW / 2 - 5 && y >= 140 && y <= 180) {
         this._hoveredEl = 'type_ind';
-        if (triggerPressed && this.cb.setCreatorType) this.cb.setCreatorType('industrial');
+        if (isClick && this.cb.setCreatorType) {
+          this.cb.setCreatorType('industrial');
+        }
       }
-      if (x >= CW/2 + 5 && x <= CW - PAD && y >= 140 && y <= 180) {
+      if (x >= CW / 2 + 5 && x <= CW - PAD && y >= 140 && y <= 180) {
         this._hoveredEl = 'type_cob';
-        if (triggerPressed && this.cb.setCreatorType) this.cb.setCreatorType('cobot');
+        if (isClick && this.cb.setCreatorType) {
+          this.cb.setCreatorType('cobot');
+        }
       }
       // Colors
       const cSize = 40;
-      const cGap = (CW - PAD*2 - cSize*6) / 5;
+      const cGap = (CW - PAD * 2 - cSize * 6) / 5;
       for (let i = 0; i < 6; i++) {
         const cx = PAD + i * (cSize + cGap);
         if (x >= cx && x <= cx + cSize && y >= 210 && y <= 250) {
           this._hoveredEl = 'col_' + i;
-          if (triggerPressed && this.cb.setCreatorColor) {
-             const colors = [0xF7931E, 0xCC2936, 0xE8B931, 0x2C7AB5, 0x44BB88, 0x9955CC];
-             this.cb.setCreatorColor(colors[i]);
+          if (isClick && this.cb.setCreatorColor) {
+            const colors = [0xF7931E, 0xCC2936, 0xE8B931, 0x2C7AB5, 0x44BB88, 0x9955CC];
+            this.cb.setCreatorColor(colors[i]);
           }
         }
       }
@@ -419,11 +499,11 @@ export class VRUI {
       const mapY = 490;
       const mapH = 180;
       if (x >= PAD && x <= CW - PAD && y >= mapY && y <= mapY + mapH) {
-         if (triggerPressed && this.cb.setCreatorMapPos) {
-           const u = (x - PAD) / (CW - PAD*2);
-           const v = (y - mapY) / mapH;
-           this.cb.setCreatorMapPos(u, v);
-         }
+        if (triggerPressed && this.cb.setCreatorMapPos) {
+          const u = (x - PAD) / (CW - PAD * 2);
+          const v = (y - mapY) / mapH;
+          this.cb.setCreatorMapPos(u, v);
+        }
       }
     }
 
@@ -432,6 +512,9 @@ export class VRUI {
       if (b.view && b.view !== this._view) continue;
       if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) {
         this._hoveredEl = b.id;
+        if (isClick) {
+          b.action();
+        }
       }
     }
   }
@@ -498,8 +581,18 @@ export class VRUI {
       }
     }
 
-    // ── Cursor dot ──
-    if (this._hoverUV) {
+    // ── Cursor dots ──
+    if (this._hoverUVs && this._hoverUVs.length > 0) {
+      for (const uv of this._hoverUVs) {
+        ctx.beginPath();
+        ctx.arc(uv.x, uv.y, 6, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255,255,255,0.7)';
+        ctx.fill();
+        ctx.strokeStyle = C.accent;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+    } else if (this._hoverUV) {
       ctx.beginPath();
       ctx.arc(this._hoverUV.x, this._hoverUV.y, 6, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(255,255,255,0.7)';
@@ -646,7 +739,7 @@ export class VRUI {
     ctx.font = '14px "Share Tech Mono", monospace';
     ctx.textAlign = 'left';
     ctx.fillText('ROBOT CAMERA VISION', PAD + 10, ty);
-    
+
     ctx.strokeStyle = 'rgba(255,204,0,0.15)';
     ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(PAD, ty + 8); ctx.lineTo(CW - PAD, ty + 8); ctx.stroke();
@@ -658,26 +751,26 @@ export class VRUI {
       // Draw the camera feed. VRUI width is CW=480, draw it as large as possible.
       const w = CW - PAD * 2; // 440
       const h = w * (s.visionCanvas.height / s.visionCanvas.width);
-      
+
       ctx.drawImage(s.visionCanvas, PAD, ty, w, h);
-      
+
       // Add industrial border
       ctx.strokeStyle = 'rgba(77, 170, 255, 0.5)';
       ctx.lineWidth = 2;
       ctx.strokeRect(PAD, ty, w, h);
-      
+
       // REC indicator (blinking)
       if (Math.floor(Date.now() / 500) % 2 === 0) {
         ctx.fillStyle = '#ff3333';
         ctx.beginPath();
-        ctx.arc(PAD + 16, ty + 16, 4, 0, Math.PI*2);
+        ctx.arc(PAD + 16, ty + 16, 4, 0, Math.PI * 2);
         ctx.fill();
         ctx.fillStyle = '#fff';
         ctx.font = 'bold 10px monospace';
         ctx.textAlign = 'left';
         ctx.fillText('REC', PAD + 24, ty + 20);
       }
-      
+
       // Crosshair
       const cx = PAD + w / 2;
       const cy = ty + h / 2;
@@ -704,31 +797,26 @@ export class VRUI {
     ctx.font = '14px "Share Tech Mono", monospace';
     ctx.textAlign = 'left';
     ctx.fillText('SELECT ROBOT', PAD + 10, ty);
-    
+
     ctx.strokeStyle = 'rgba(255,204,0,0.15)';
     ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(PAD, ty + 8); ctx.lineTo(CW - PAD, ty + 8); ctx.stroke();
 
     ty += 30;
 
-    const META = [
-      { name: 'Robot 1', type: 'Standard Arm',   color: '#4488BB' },
-      { name: 'Robot 2', type: 'ABB Industrial',  color: '#CC2936' },
-      { name: 'Robot 3', type: 'Fanuc Cobot',     color: '#E8B931' },
-      { name: 'Robot 4', type: 'Cobot',           color: '#44BBAA' },
-    ];
+    const META = window.ROBOT_META || [];
 
     for (let i = 0; i < robots.length; i++) {
       const st = robots[i];
-      const m = META[i] || { name: `Robot ${i+1}`, type: 'Unknown', color: '#888' };
-      
+      const m = META[i] || { name: `Robot ${i + 1}`, type: 'Unknown', color: '#888' };
+
       const isHovered = this._hoveredEl === 'robot_' + i;
-      
+
       let bg = 'rgba(255,255,255,0.02)';
       let border = 'rgba(255,255,255,0.06)';
       let statusTxt = '🔒 IN USE';
       let statusCol = '#cc4444';
-      
+
       if (st.isYours) {
         bg = 'rgba(0, 255, 136, 0.05)';
         border = 'rgba(0, 255, 136, 0.40)';
@@ -740,35 +828,35 @@ export class VRUI {
         statusTxt = '◎ FREE';
         statusCol = '#00ff88';
       }
-      
+
       this._roundRect(PAD, ty, CW - PAD * 2, 46, 6, bg);
       ctx.strokeStyle = border;
       ctx.lineWidth = 1;
       this._roundRectStroke(PAD, ty, CW - PAD * 2, 46, 6);
-      
+
       this._roundRect(PAD + 14, ty + 16, 14, 14, 3, m.color);
-      
+
       ctx.fillStyle = C.text;
       ctx.font = 'bold 14px Rajdhani, sans-serif';
       ctx.textAlign = 'left';
       ctx.fillText(m.name, PAD + 40, ty + 20);
-      
+
       ctx.fillStyle = C.textDim;
       ctx.font = '9px "Share Tech Mono", monospace';
       ctx.fillText(m.type, PAD + 40, ty + 34);
-      
+
       ctx.fillStyle = statusCol;
       ctx.font = 'bold 10px "Share Tech Mono", monospace';
       ctx.textAlign = 'right';
       ctx.fillText(statusTxt, CW - PAD - 14, ty + 28);
-      
+
       ty += 56;
     }
   }
 
   _drawCreator(ctx) {
     let ty = 130;
-    
+
     const state = this.cb.getCreatorState?.();
     if (!state) return;
 
@@ -778,40 +866,40 @@ export class VRUI {
     ctx.textAlign = 'left';
     ctx.fillText('ROBOT TYPE', PAD, ty);
     ty += 10;
-    
+
     const isInd = state.type === 'industrial';
     const isCob = state.type === 'cobot';
-    
+
     // Industrial btn
-    this._roundRect(PAD, ty, CW/2 - PAD - 5, 40, 6, isInd ? 'rgba(255,204,0,0.2)' : C.btnBg);
+    this._roundRect(PAD, ty, CW / 2 - PAD - 5, 40, 6, isInd ? 'rgba(255,204,0,0.2)' : C.btnBg);
     if (this._hoveredEl === 'type_ind') ctx.fillStyle = '#fff'; else ctx.fillStyle = isInd ? C.accent : C.text;
     ctx.font = 'bold 14px Rajdhani';
     ctx.textAlign = 'center';
-    ctx.fillText('🏭 INDUSTRIAL', PAD + (CW/2 - PAD - 5)/2, ty + 25);
-    
+    ctx.fillText('🏭 INDUSTRIAL', PAD + (CW / 2 - PAD - 5) / 2, ty + 25);
+
     // Cobot btn
-    this._roundRect(CW/2 + 5, ty, CW/2 - PAD - 5, 40, 6, isCob ? 'rgba(44, 122, 181, 0.4)' : C.btnBg);
+    this._roundRect(CW / 2 + 5, ty, CW / 2 - PAD - 5, 40, 6, isCob ? 'rgba(44, 122, 181, 0.4)' : C.btnBg);
     if (this._hoveredEl === 'type_cob') ctx.fillStyle = '#fff'; else ctx.fillStyle = isCob ? '#4D9EE0' : C.text;
-    ctx.fillText('🤝 COBOT', CW/2 + 5 + (CW/2 - PAD - 5)/2, ty + 25);
-    
+    ctx.fillText('🤝 COBOT', CW / 2 + 5 + (CW / 2 - PAD - 5) / 2, ty + 25);
+
     ty += 60;
-    
+
     // Colors
     ctx.fillStyle = C.textDim;
     ctx.font = '10px "Share Tech Mono", monospace';
     ctx.textAlign = 'left';
     ctx.fillText('ARM COLOR', PAD, ty);
     ty += 10;
-    
+
     const colors = [0xF7931E, 0xCC2936, 0xE8B931, 0x2C7AB5, 0x44BB88, 0x9955CC];
     const cSize = 40;
-    const cGap = (CW - PAD*2 - cSize*6) / 5;
+    const cGap = (CW - PAD * 2 - cSize * 6) / 5;
     for (let i = 0; i < 6; i++) {
       const cx = PAD + i * (cSize + cGap);
       const hexStr = '#' + colors[i].toString(16).padStart(6, '0');
       ctx.fillStyle = hexStr;
       this._roundRect(cx, ty, cSize, cSize, 4, hexStr);
-      
+
       if (state.color === colors[i]) {
         ctx.strokeStyle = C.accent;
         ctx.lineWidth = 3;
@@ -822,17 +910,17 @@ export class VRUI {
         this._roundRectStroke(cx, ty, cSize, cSize, 4);
       }
     }
-    
+
     ty += 60;
-    
+
     // Preview
     ctx.fillStyle = C.textDim;
     ctx.textAlign = 'left';
     ctx.fillText('3D PREVIEW', PAD, ty);
     ty += 10;
-    
+
     if (state.prevCanvas) {
-      const pW = CW - PAD*2;
+      const pW = CW - PAD * 2;
       const pH = 180;
       // fill background
       ctx.fillStyle = '#060a10';
@@ -842,16 +930,16 @@ export class VRUI {
       ctx.lineWidth = 1;
       ctx.strokeRect(PAD, ty, pW, pH);
     }
-    
+
     ty += 200;
-    
+
     // Map
     ctx.fillStyle = C.textDim;
     ctx.fillText('DEPLOYMENT MAP (CLICK TO PLACE)', PAD, ty);
     ty += 10;
-    
+
     if (state.mapCanvas) {
-      const mW = CW - PAD*2;
+      const mW = CW - PAD * 2;
       const mH = 180;
       ctx.fillRect(PAD, ty, mW, mH);
       ctx.drawImage(state.mapCanvas, PAD, ty, mW, mH);

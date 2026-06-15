@@ -6,6 +6,8 @@ export class PhysicsController {
   }
 
   freeze() {
+    this.body.type = CANNON.Body.KINEMATIC;
+    this.body.updateMassProperties();
     this.body.linearDamping = 0.995;
     this.body.angularDamping = 0.998;
     this.body.velocity.set(0, 0, 0);
@@ -13,6 +15,9 @@ export class PhysicsController {
   }
 
   release() {
+    this.body.type = CANNON.Body.DYNAMIC;
+    this.body.updateMassProperties();
+    this.body.wakeUp();
     this.body.linearDamping = 0.2;
     this.body.angularDamping = 0.4;
   }
