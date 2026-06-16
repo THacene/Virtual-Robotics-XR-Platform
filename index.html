@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <title>ARM ROBOTIC — FACTORY CONTROL</title>
@@ -12,32 +13,43 @@
     }
   </script>
   <link rel="stylesheet" href="/public/css/style.css">
-  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap"
+    rel="stylesheet">
   <style>
     :root {
-      --c-yellow:  #ffcc00;
-      --c-orange:  #d07020;
-      --c-blue:    #4a6a8a;
-      --c-green:   #2e8a50;
-      --c-red:     #cc3322;
-      --c-pipe:    #889098;
-      --c-beam:    #606870;
+      --c-yellow: #ffcc00;
+      --c-orange: #d07020;
+      --c-blue: #4a6a8a;
+      --c-green: #2e8a50;
+      --c-red: #cc3322;
+      --c-pipe: #889098;
+      --c-beam: #606870;
 
-      --glass-bg:     rgba(15, 20, 28, 0.72);
-      --glass-bg2:    rgba(20, 26, 36, 0.60);
+      --glass-bg: rgba(15, 20, 28, 0.72);
+      --glass-bg2: rgba(20, 26, 36, 0.60);
       --glass-border: rgba(255, 255, 255, 0.07);
-      --glass-sep:    rgba(255, 255, 255, 0.05);
-      --txt:          #d0d8e0;
-      --txt-dim:      #5a6a7a;
-      --txt-label:    #7a8a9a;
+      --glass-sep: rgba(255, 255, 255, 0.05);
+      --txt: #d0d8e0;
+      --txt-dim: #5a6a7a;
+      --txt-label: #7a8a9a;
 
       --panel-w: 200px;
-      --f-ui:   'Rajdhani', sans-serif;
+      --f-ui: 'Rajdhani', sans-serif;
       --f-mono: 'Share Tech Mono', monospace;
     }
 
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { height: 100%; overflow: hidden; }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html,
+    body {
+      height: 100%;
+      overflow: hidden;
+    }
 
     body {
       background: #0d1014;
@@ -55,7 +67,7 @@
       height: 72px;
       cursor: pointer;
       background: rgba(20, 28, 40, 0.80);
-      border: 1px solid rgba(255,204,0,.25);
+      border: 1px solid rgba(255, 204, 0, .25);
       color: var(--c-yellow);
       font-family: var(--f-mono);
       font-size: 7px;
@@ -67,12 +79,24 @@
       transition: left .32s ease, right .32s ease, background .15s;
       backdrop-filter: blur(6px);
     }
-    .panel-toggle:hover { background: rgba(30, 42, 58, 0.90); }
-    .left-tog  { left: var(--panel-w); border-left: 2px solid var(--c-yellow); }
-    .right-tog { right: var(--panel-w); border-right: 2px solid var(--c-yellow); }
+
+    .panel-toggle:hover {
+      background: rgba(30, 42, 58, 0.90);
+    }
+
+    .left-tog {
+      left: var(--panel-w);
+      border-left: 2px solid var(--c-yellow);
+    }
+
+    .right-tog {
+      right: var(--panel-w);
+      border-right: 2px solid var(--c-yellow);
+    }
 
     /* ── PANELS ── */
-    #left, #right {
+    #left,
+    #right {
       position: fixed;
       top: 0;
       height: 100vh;
@@ -82,22 +106,41 @@
       overflow-x: hidden;
       transition: transform .32s ease;
       scrollbar-width: thin;
-      scrollbar-color: rgba(255,255,255,.08) transparent;
+      scrollbar-color: rgba(255, 255, 255, .08) transparent;
       /* Glass effect */
       background: var(--glass-bg);
       backdrop-filter: blur(18px) saturate(1.4);
       -webkit-backdrop-filter: blur(18px) saturate(1.4);
       border: 1px solid var(--glass-border);
     }
-    #left  { left: 0;  border-right: 1px solid rgba(255,204,0,.18); }
-    #right { right: 0; border-left:  1px solid rgba(255,204,0,.18); }
-    #left.hidden  { transform: translateX(-100%); }
-    #right.hidden { transform: translateX(100%); }
+
+    #left {
+      left: 0;
+      border-right: 1px solid rgba(255, 204, 0, .18);
+    }
+
+    #right {
+      right: 0;
+      border-left: 1px solid rgba(255, 204, 0, .18);
+    }
+
+    #left.hidden {
+      transform: translateX(-100%);
+    }
+
+    #right.hidden {
+      transform: translateX(100%);
+    }
 
     #left::-webkit-scrollbar,
-    #right::-webkit-scrollbar { width: 2px; }
+    #right::-webkit-scrollbar {
+      width: 2px;
+    }
+
     #left::-webkit-scrollbar-thumb,
-    #right::-webkit-scrollbar-thumb { background: rgba(255,255,255,.08); }
+    #right::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, .08);
+    }
 
     /* ── PANEL HEADER ── */
     .panel-header {
@@ -106,7 +149,7 @@
       z-index: 10;
       padding: 10px 12px 8px;
       background: rgba(10, 14, 20, 0.85);
-      border-bottom: 1px solid rgba(255,204,0,.20);
+      border-bottom: 1px solid rgba(255, 204, 0, .20);
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -117,13 +160,13 @@
     .panel-header::before {
       content: '';
       position: absolute;
-      top: 0; left: 0; right: 0;
+      top: 0;
+      left: 0;
+      right: 0;
       height: 2px;
-      background: repeating-linear-gradient(
-        90deg,
-        var(--c-yellow) 0, var(--c-yellow) 6px,
-        transparent 6px, transparent 12px
-      );
+      background: repeating-linear-gradient(90deg,
+          var(--c-yellow) 0, var(--c-yellow) 6px,
+          transparent 6px, transparent 12px);
       opacity: .6;
     }
 
@@ -135,6 +178,7 @@
       color: var(--c-yellow);
       line-height: 1;
     }
+
     .ph-sub {
       font-size: 8px;
       letter-spacing: 2px;
@@ -145,17 +189,31 @@
     }
 
     .ph-led {
-      width: 7px; height: 7px;
+      width: 7px;
+      height: 7px;
       border-radius: 50%;
       background: var(--c-green);
       box-shadow: 0 0 6px var(--c-green);
       animation: blink 2.8s ease-in-out infinite;
       flex-shrink: 0;
     }
-    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.15} }
+
+    @keyframes blink {
+
+      0%,
+      100% {
+        opacity: 1
+      }
+
+      50% {
+        opacity: .15
+      }
+    }
 
     /* ── PANEL BODY ── */
-    .panel-body { padding: 8px 10px 20px; }
+    .panel-body {
+      padding: 8px 10px 20px;
+    }
 
     /* status badge */
     #sb {
@@ -164,8 +222,8 @@
       letter-spacing: 3px;
       text-align: center;
       color: var(--c-orange);
-      border: 1px solid rgba(208,112,32,.30);
-      background: rgba(208,112,32,.06);
+      border: 1px solid rgba(208, 112, 32, .30);
+      background: rgba(208, 112, 32, .06);
       padding: 5px 8px;
       margin-bottom: 8px;
       text-transform: uppercase;
@@ -175,7 +233,7 @@
     .sec {
       margin-bottom: 6px;
       border: 1px solid var(--glass-sep);
-      border-top: 1px solid rgba(255,255,255,.09);
+      border-top: 1px solid rgba(255, 255, 255, .09);
       background: var(--glass-bg2);
     }
 
@@ -191,24 +249,32 @@
       align-items: center;
       gap: 6px;
     }
+
     .sec-hd .dot {
-      width: 4px; height: 4px;
+      width: 4px;
+      height: 4px;
       border-radius: 50%;
       background: var(--c-yellow);
       opacity: .7;
       flex-shrink: 0;
     }
 
-    .sec-body { padding: 8px 10px; }
+    .sec-body {
+      padding: 8px 10px;
+    }
 
     /* ── CONTROLS ── */
-    .ctrl { margin-bottom: 7px; }
+    .ctrl {
+      margin-bottom: 7px;
+    }
+
     .ctrl-row {
       display: flex;
       justify-content: space-between;
       align-items: baseline;
       margin-bottom: 3px;
     }
+
     .ctrl-lbl {
       font-size: 9px;
       letter-spacing: 1px;
@@ -216,6 +282,7 @@
       text-transform: uppercase;
       font-family: var(--f-mono);
     }
+
     .ctrl-val {
       font-size: 11px;
       font-family: var(--f-mono);
@@ -225,26 +292,31 @@
 
     input[type=range] {
       -webkit-appearance: none;
-      width: 100%; height: 2px;
-      background: rgba(255,255,255,.12);
-      outline: none; cursor: pointer;
+      width: 100%;
+      height: 2px;
+      background: rgba(255, 255, 255, .12);
+      outline: none;
+      cursor: pointer;
       border-radius: 0;
     }
+
     input[type=range]::-webkit-slider-thumb {
       -webkit-appearance: none;
-      width: 10px; height: 10px;
+      width: 10px;
+      height: 10px;
       background: var(--c-yellow);
-      border: 1px solid rgba(0,0,0,.4);
+      border: 1px solid rgba(0, 0, 0, .4);
       border-radius: 0;
       cursor: pointer;
     }
 
     /* ── BUTTONS ── */
     .btn {
-      display: block; width: 100%;
+      display: block;
+      width: 100%;
       padding: 6px 10px;
-      background: rgba(255,255,255,.04);
-      border: 1px solid rgba(255,255,255,.10);
+      background: rgba(255, 255, 255, .04);
+      border: 1px solid rgba(255, 255, 255, .10);
       color: var(--txt);
       font-family: var(--f-ui);
       font-size: 11px;
@@ -256,136 +328,346 @@
       transition: background .15s, border-color .15s;
       text-align: left;
     }
+
     .btn:hover {
-      background: rgba(255,255,255,.09);
-      border-color: rgba(255,255,255,.22);
+      background: rgba(255, 255, 255, .09);
+      border-color: rgba(255, 255, 255, .22);
     }
-    .btn-blue  { border-color: rgba(74,106,138,.45); color: #7aaacc; }
-    .btn-blue:hover  { background: rgba(74,106,138,.15); }
-    .btn-purple { border-color: rgba(150,80,200,.35); color: #bb88ee; }
-    .btn-purple:hover { background: rgba(150,80,200,.12); }
+
+    .btn-blue {
+      border-color: rgba(74, 106, 138, .45);
+      color: #7aaacc;
+    }
+
+    .btn-blue:hover {
+      background: rgba(74, 106, 138, .15);
+    }
+
+    .btn-purple {
+      border-color: rgba(150, 80, 200, .35);
+      color: #bb88ee;
+    }
+
+    .btn-purple:hover {
+      background: rgba(150, 80, 200, .12);
+    }
 
     /* XR buttons */
     .xr-btn {
-      display: flex; align-items: center; gap: 8px;
-      width: 100%; padding: 7px 10px;
-      background: rgba(255,255,255,.03);
-      border: 1px solid rgba(255,255,255,.08);
-      cursor: pointer; margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      padding: 7px 10px;
+      background: rgba(255, 255, 255, .03);
+      border: 1px solid rgba(255, 255, 255, .08);
+      cursor: pointer;
+      margin-bottom: 4px;
       transition: background .15s;
     }
-    .xr-btn:disabled { opacity: .3; cursor: not-allowed; }
-    .xr-btn:not(:disabled):hover { background: rgba(255,255,255,.07); }
-    .xr-btn-ar { border-color: rgba(46,138,80,.30); }
-    .xr-btn-ar:not(:disabled):hover { background: rgba(46,138,80,.10); }
-    .xr-icon { font-size: 14px; }
-    .xr-lbl  { font-size: 11px; font-weight: 600; color: var(--txt); flex: 1; font-family: var(--f-ui); letter-spacing: 1px; }
-    .xr-status { font-size: 7px; color: var(--txt-dim); font-family: var(--f-mono); }
 
-    /* ── FINGER INDICATORS ── */
-    .contact-lbl {
-      font-size: 8px; letter-spacing: 1px;
-      color: var(--txt-dim); text-transform: uppercase;
-      font-family: var(--f-mono); margin: 6px 0 4px;
+    .xr-btn:disabled {
+      opacity: .3;
+      cursor: not-allowed;
     }
-    .ind-row { display: flex; gap: 4px; margin-bottom: 3px; }
-    #indL, #indR {
-      flex: 1; font-size: 8px; letter-spacing: 1px;
-      text-align: center; padding: 4px;
-      background: rgba(255,255,255,.03);
-      border: 1px solid rgba(255,255,255,.07);
+
+    .xr-btn:not(:disabled):hover {
+      background: rgba(255, 255, 255, .07);
+    }
+
+    .xr-btn-ar {
+      border-color: rgba(46, 138, 80, .30);
+    }
+
+    .xr-btn-ar:not(:disabled):hover {
+      background: rgba(46, 138, 80, .10);
+    }
+
+    .xr-icon {
+      font-size: 14px;
+    }
+
+    .xr-lbl {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--txt);
+      flex: 1;
+      font-family: var(--f-ui);
+      letter-spacing: 1px;
+    }
+
+    .xr-status {
+      font-size: 7px;
       color: var(--txt-dim);
       font-family: var(--f-mono);
     }
+
+    /* ── FINGER INDICATORS ── */
+    .contact-lbl {
+      font-size: 8px;
+      letter-spacing: 1px;
+      color: var(--txt-dim);
+      text-transform: uppercase;
+      font-family: var(--f-mono);
+      margin: 6px 0 4px;
+    }
+
+    .ind-row {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 3px;
+    }
+
+    #indL,
+    #indR {
+      flex: 1;
+      font-size: 8px;
+      letter-spacing: 1px;
+      text-align: center;
+      padding: 4px;
+      background: rgba(255, 255, 255, .03);
+      border: 1px solid rgba(255, 255, 255, .07);
+      color: var(--txt-dim);
+      font-family: var(--f-mono);
+    }
+
     #indB {
-      font-size: 8px; letter-spacing: 1px; text-align: center;
-      padding: 4px; background: rgba(255,255,255,.03);
-      border: 1px solid rgba(255,255,255,.07);
-      color: var(--txt-dim); font-family: var(--f-mono);
+      font-size: 8px;
+      letter-spacing: 1px;
+      text-align: center;
+      padding: 4px;
+      background: rgba(255, 255, 255, .03);
+      border: 1px solid rgba(255, 255, 255, .07);
+      color: var(--txt-dim);
+      font-family: var(--f-mono);
     }
 
     /* ── TELEMETRY BARS ── */
-    .jbar-row { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
-    .jbar-lbl { font-size: 8px; color: var(--txt-dim); text-transform: uppercase; width: 52px; flex-shrink: 0; font-family: var(--f-mono); }
-    .jbar-track { flex: 1; height: 2px; background: rgba(255,255,255,.10); overflow: hidden; }
-    .jbar-fill  { height: 100%; transition: width .1s linear; }
-    .jbar-num   { font-size: 10px; font-family: var(--f-mono); min-width: 34px; text-align: right; }
+    .jbar-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 5px;
+    }
+
+    .jbar-lbl {
+      font-size: 8px;
+      color: var(--txt-dim);
+      text-transform: uppercase;
+      width: 52px;
+      flex-shrink: 0;
+      font-family: var(--f-mono);
+    }
+
+    .jbar-track {
+      flex: 1;
+      height: 2px;
+      background: rgba(255, 255, 255, .10);
+      overflow: hidden;
+    }
+
+    .jbar-fill {
+      height: 100%;
+      transition: width .1s linear;
+    }
+
+    .jbar-num {
+      font-size: 10px;
+      font-family: var(--f-mono);
+      min-width: 34px;
+      text-align: right;
+    }
 
     /* ── COORD GRID ── */
-    .coord-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 3px; margin-bottom: 5px; }
-    .coord-cell {
-      text-align: center; padding: 5px 2px;
-      background: rgba(255,255,255,.03);
-      border: 1px solid rgba(255,255,255,.06);
+    .coord-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 3px;
+      margin-bottom: 5px;
     }
-    .coord-axis { font-size: 7px; color: var(--txt-dim); text-transform: uppercase; margin-bottom: 2px; font-family: var(--f-mono); }
-    .coord-val  { font-size: 11px; font-family: var(--f-mono); font-weight: 600; }
+
+    .coord-cell {
+      text-align: center;
+      padding: 5px 2px;
+      background: rgba(255, 255, 255, .03);
+      border: 1px solid rgba(255, 255, 255, .06);
+    }
+
+    .coord-axis {
+      font-size: 7px;
+      color: var(--txt-dim);
+      text-transform: uppercase;
+      margin-bottom: 2px;
+      font-family: var(--f-mono);
+    }
+
+    .coord-val {
+      font-size: 11px;
+      font-family: var(--f-mono);
+      font-weight: 600;
+    }
 
     /* ── FINGER CARDS ── */
     .finger-card {
-      border: 1px solid rgba(208,112,32,.18);
-      border-top: 1px solid rgba(208,112,32,.40);
-      background: rgba(208,112,32,.04);
-      padding: 7px 8px; margin-bottom: 5px;
+      border: 1px solid rgba(208, 112, 32, .18);
+      border-top: 1px solid rgba(208, 112, 32, .40);
+      background: rgba(208, 112, 32, .04);
+      padding: 7px 8px;
+      margin-bottom: 5px;
     }
+
     .finger-card-hd {
-      font-size: 8px; letter-spacing: 2px; color: var(--c-orange);
-      text-transform: uppercase; margin-bottom: 6px;
-      display: flex; align-items: center; gap: 5px;
+      font-size: 8px;
+      letter-spacing: 2px;
+      color: var(--c-orange);
+      text-transform: uppercase;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
       font-family: var(--f-mono);
     }
-    .finger-row { display: flex; justify-content: space-between; margin-bottom: 3px; }
-    .finger-lbl { font-size: 8px; color: var(--txt-dim); text-transform: uppercase; font-family: var(--f-mono); }
-    .finger-val { font-size: 9px; font-family: var(--f-mono); color: var(--txt-dim); }
-    .force-wrap { height: 3px; background: rgba(255,255,255,.07); margin-top: 4px; overflow: hidden; }
-    .force-fill { height: 100%; background: var(--c-orange); transition: width .12s linear; }
+
+    .finger-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 3px;
+    }
+
+    .finger-lbl {
+      font-size: 8px;
+      color: var(--txt-dim);
+      text-transform: uppercase;
+      font-family: var(--f-mono);
+    }
+
+    .finger-val {
+      font-size: 9px;
+      font-family: var(--f-mono);
+      color: var(--txt-dim);
+    }
+
+    .force-wrap {
+      height: 3px;
+      background: rgba(255, 255, 255, .07);
+      margin-top: 4px;
+      overflow: hidden;
+    }
+
+    .force-fill {
+      height: 100%;
+      background: var(--c-orange);
+      transition: width .12s linear;
+    }
 
     /* ── TCARD ── */
     .tcard {
-      background: rgba(255,255,255,.03);
-      border: 1px solid rgba(255,255,255,.07);
-      padding: 7px 8px; margin-bottom: 5px;
+      background: rgba(255, 255, 255, .03);
+      border: 1px solid rgba(255, 255, 255, .07);
+      padding: 7px 8px;
+      margin-bottom: 5px;
     }
-    .tcard-row { display: flex; justify-content: space-between; align-items: center; }
-    .tcard-lbl { font-size: 8px; color: var(--txt-dim); text-transform: uppercase; font-family: var(--f-mono); }
-    .tcard-val { font-size: 11px; font-family: var(--f-mono); color: var(--c-yellow); }
+
+    .tcard-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .tcard-lbl {
+      font-size: 8px;
+      color: var(--txt-dim);
+      text-transform: uppercase;
+      font-family: var(--f-mono);
+    }
+
+    .tcard-val {
+      font-size: 11px;
+      font-family: var(--f-mono);
+      color: var(--c-yellow);
+    }
 
     /* ── CAMERA OVERLAYS ── */
-    #cameraOverlay, #allCamerasOverlay {
-      position: fixed; top: 50%; left: 50%;
-      transform: translate(-50%,-50%);
-      z-index: 200; display: none; flex-direction: column;
+    #cameraOverlay,
+    #allCamerasOverlay {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 200;
+      display: none;
+      flex-direction: column;
       min-width: 320px;
-      background: rgba(10,14,20,.92);
-      border: 1px solid rgba(255,204,0,.30);
+      background: rgba(10, 14, 20, .92);
+      border: 1px solid rgba(255, 204, 0, .30);
       backdrop-filter: blur(20px);
     }
-    #cameraHeader, #allCamHeader {
+
+    #cameraHeader,
+    #allCamHeader {
       padding: 8px 12px;
-      display: flex; justify-content: space-between; align-items: center;
-      border-bottom: 1px solid rgba(255,204,0,.20);
-      font-family: var(--f-mono); font-size: 10px; letter-spacing: 3px;
-      color: var(--c-yellow); text-transform: uppercase;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid rgba(255, 204, 0, .20);
+      font-family: var(--f-mono);
+      font-size: 10px;
+      letter-spacing: 3px;
+      color: var(--c-yellow);
+      text-transform: uppercase;
     }
-    #btnCloseCamera, #btnCloseAllCams {
-      background: none; border: 1px solid rgba(204,51,34,.5);
-      color: var(--c-red); width: 20px; height: 20px;
-      cursor: pointer; font-size: 11px;
-      display: flex; align-items: center; justify-content: center;
+
+    #btnCloseCamera,
+    #btnCloseAllCams {
+      background: none;
+      border: 1px solid rgba(204, 51, 34, .5);
+      color: var(--c-red);
+      width: 20px;
+      height: 20px;
+      cursor: pointer;
+      font-size: 11px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
-    #btnCloseCamera:hover, #btnCloseAllCams:hover { background: rgba(204,51,34,.2); }
-    #cameraBody, #allCamBody { padding: 8px; background: #060809; }
-    #camCanvas, #allCamCanvas { display: block; max-width: 100%; border: 1px solid rgba(255,255,255,.06); }
-    #cameraInfo, #allCamInfo {
-      display: flex; gap: 8px; margin-top: 5px;
-      font-size: 7px; letter-spacing: 2px;
-      color: var(--txt-dim); text-transform: uppercase; font-family: var(--f-mono);
+
+    #btnCloseCamera:hover,
+    #btnCloseAllCams:hover {
+      background: rgba(204, 51, 34, .2);
+    }
+
+    #cameraBody,
+    #allCamBody {
+      padding: 8px;
+      background: #060809;
+    }
+
+    #camCanvas,
+    #allCamCanvas {
+      display: block;
+      max-width: 100%;
+      border: 1px solid rgba(255, 255, 255, .06);
+    }
+
+    #cameraInfo,
+    #allCamInfo {
+      display: flex;
+      gap: 8px;
+      margin-top: 5px;
+      font-size: 7px;
+      letter-spacing: 2px;
+      color: var(--txt-dim);
+      text-transform: uppercase;
+      font-family: var(--f-mono);
     }
 
     /* ── ROBOT PICKER POPUP ── */
     #robotPickerOverlay {
       position: fixed;
-      top: 0; left: 0; right: 0; bottom: 0;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
       z-index: 5000;
       background: rgba(0, 0, 0, 0.55);
       backdrop-filter: blur(6px);
@@ -394,15 +676,31 @@
       justify-content: center;
       animation: rpFadeIn 0.18s ease;
     }
-    #robotPickerOverlay.visible { display: flex; }
+
+    #robotPickerOverlay.visible {
+      display: flex;
+    }
 
     @keyframes rpFadeIn {
-      from { opacity: 0; }
-      to   { opacity: 1; }
+      from {
+        opacity: 0;
+      }
+
+      to {
+        opacity: 1;
+      }
     }
+
     @keyframes rpSlideIn {
-      from { transform: translateY(18px) scale(0.96); opacity: 0; }
-      to   { transform: translateY(0) scale(1); opacity: 1; }
+      from {
+        transform: translateY(18px) scale(0.96);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateY(0) scale(1);
+        opacity: 1;
+      }
     }
 
     #robotPickerPanel {
@@ -412,7 +710,7 @@
       border: 1px solid rgba(255, 204, 0, 0.35);
       border-radius: 6px;
       backdrop-filter: blur(24px);
-      box-shadow: 0 12px 48px rgba(0, 0, 0, 0.7), 0 0 1px rgba(255,204,0,0.3);
+      box-shadow: 0 12px 48px rgba(0, 0, 0, 0.7), 0 0 1px rgba(255, 204, 0, 0.3);
       animation: rpSlideIn 0.22s ease;
       overflow: hidden;
     }
@@ -425,10 +723,13 @@
       border-bottom: 1px solid rgba(255, 204, 0, 0.22);
       background: rgba(10, 12, 18, 0.7);
     }
+
     #robotPickerHeader::before {
       content: '';
       position: absolute;
-      top: 0; left: 0; right: 0;
+      top: 0;
+      left: 0;
+      right: 0;
       height: 2px;
       background: linear-gradient(90deg, transparent, var(--c-yellow), transparent);
       opacity: 0.5;
@@ -442,6 +743,7 @@
       text-transform: uppercase;
       font-weight: 700;
     }
+
     .rp-hint {
       font-family: var(--f-mono);
       font-size: 8px;
@@ -469,36 +771,43 @@
       position: relative;
       overflow: hidden;
     }
+
     .rp-item:hover:not(.rp-locked):not(.rp-current) {
       background: rgba(255, 204, 0, 0.06);
       border-color: rgba(255, 204, 0, 0.30);
       transform: translateX(4px);
     }
+
     .rp-item.rp-current {
       border-color: rgba(0, 255, 136, 0.40);
       background: rgba(0, 255, 136, 0.05);
       cursor: default;
     }
+
     .rp-item.rp-locked {
       opacity: 0.40;
       cursor: not-allowed;
     }
+
     .rp-item.rp-locked:hover {
       background: rgba(204, 51, 34, 0.04);
     }
 
     .rp-color-dot {
-      width: 14px; height: 14px;
+      width: 14px;
+      height: 14px;
       border-radius: 3px;
-      border: 1px solid rgba(255,255,255,0.15);
+      border: 1px solid rgba(255, 255, 255, 0.15);
       flex-shrink: 0;
     }
+
     .rp-info {
       flex: 1;
       display: flex;
       flex-direction: column;
       gap: 2px;
     }
+
     .rp-name {
       font-family: var(--f-ui);
       font-size: 13px;
@@ -506,6 +815,7 @@
       color: var(--txt);
       letter-spacing: 1px;
     }
+
     .rp-type {
       font-family: var(--f-mono);
       font-size: 8px;
@@ -513,6 +823,7 @@
       color: var(--txt-dim);
       text-transform: uppercase;
     }
+
     .rp-status {
       font-family: var(--f-mono);
       font-size: 9px;
@@ -523,16 +834,19 @@
       border-radius: 3px;
       border: 1px solid transparent;
     }
+
     .rp-status.free {
       color: #00ff88;
       border-color: rgba(0, 255, 136, 0.25);
       background: rgba(0, 255, 136, 0.06);
     }
+
     .rp-status.yours {
       color: #00cc66;
       border-color: rgba(0, 204, 102, 0.30);
       background: rgba(0, 204, 102, 0.08);
     }
+
     .rp-status.locked {
       color: #cc4444;
       border-color: rgba(204, 68, 68, 0.25);
@@ -541,14 +855,16 @@
 
     .rp-key-hint {
       position: absolute;
-      top: 50%; right: 14px;
+      top: 50%;
+      right: 14px;
       transform: translateY(-50%);
       font-family: var(--f-mono);
       font-size: 9px;
-      color: rgba(255,204,0,0.4);
+      color: rgba(255, 204, 0, 0.4);
       letter-spacing: 1px;
       display: none;
     }
+
     .rp-item:hover:not(.rp-locked):not(.rp-current) .rp-key-hint {
       display: block;
     }
@@ -558,6 +874,7 @@
       border-top: 1px solid rgba(255, 255, 255, 0.06);
       text-align: center;
     }
+
     .rp-footer-text {
       font-family: var(--f-mono);
       font-size: 8px;
@@ -569,7 +886,10 @@
     /* ── ROBOT CREATOR MODAL ── */
     #robotCreatorOverlay {
       position: fixed;
-      top: 0; left: 0; right: 0; bottom: 0;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
       z-index: 6000;
       background: rgba(0, 0, 0, 0.62);
       backdrop-filter: blur(8px);
@@ -578,15 +898,31 @@
       justify-content: center;
       animation: rcFadeIn 0.2s ease;
     }
-    #robotCreatorOverlay.visible { display: flex; }
+
+    #robotCreatorOverlay.visible {
+      display: flex;
+    }
 
     @keyframes rcFadeIn {
-      from { opacity: 0; }
-      to   { opacity: 1; }
+      from {
+        opacity: 0;
+      }
+
+      to {
+        opacity: 1;
+      }
     }
+
     @keyframes rcSlideUp {
-      from { transform: translateY(24px) scale(0.95); opacity: 0; }
-      to   { transform: translateY(0) scale(1); opacity: 1; }
+      from {
+        transform: translateY(24px) scale(0.95);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateY(0) scale(1);
+        opacity: 1;
+      }
     }
 
     #robotCreatorPanel {
@@ -598,7 +934,7 @@
       border: 1px solid rgba(255, 204, 0, 0.30);
       border-radius: 8px;
       backdrop-filter: blur(28px);
-      box-shadow: 0 16px 60px rgba(0, 0, 0, 0.8), 0 0 2px rgba(255,204,0,0.25);
+      box-shadow: 0 16px 60px rgba(0, 0, 0, 0.8), 0 0 2px rgba(255, 204, 0, 0.25);
       animation: rcSlideUp 0.25s ease;
     }
 
@@ -612,10 +948,13 @@
       border-radius: 8px 8px 0 0;
       position: relative;
     }
+
     #rcHeader::before {
       content: '';
       position: absolute;
-      top: 0; left: 0; right: 0;
+      top: 0;
+      left: 0;
+      right: 0;
       height: 2px;
       background: linear-gradient(90deg, transparent, var(--c-yellow), transparent);
       opacity: 0.6;
@@ -630,11 +969,13 @@
       text-transform: uppercase;
       font-weight: 700;
     }
+
     #btnCloseCreator {
       background: none;
       border: 1px solid rgba(204, 51, 34, 0.5);
       color: var(--c-red);
-      width: 24px; height: 24px;
+      width: 24px;
+      height: 24px;
       cursor: pointer;
       font-size: 13px;
       display: flex;
@@ -643,7 +984,10 @@
       border-radius: 4px;
       transition: background 0.15s;
     }
-    #btnCloseCreator:hover { background: rgba(204, 51, 34, 0.2); }
+
+    #btnCloseCreator:hover {
+      background: rgba(204, 51, 34, 0.2);
+    }
 
     #rcBody {
       display: flex;
@@ -664,6 +1008,7 @@
       flex-direction: column;
       gap: 4px;
     }
+
     .rc-label {
       font-family: var(--f-mono);
       font-size: 9px;
@@ -673,8 +1018,8 @@
     }
 
     .rc-input {
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.10);
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.10);
       color: var(--txt);
       font-family: var(--f-ui);
       font-size: 12px;
@@ -682,13 +1027,14 @@
       outline: none;
       transition: border-color 0.15s;
     }
+
     .rc-input:focus {
-      border-color: rgba(255,204,0,0.40);
+      border-color: rgba(255, 204, 0, 0.40);
     }
 
     .rc-select {
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.10);
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.10);
       color: var(--txt);
       font-family: var(--f-ui);
       font-size: 12px;
@@ -702,9 +1048,11 @@
       background-position: right 10px center;
       padding-right: 28px;
     }
+
     .rc-select:focus {
-      border-color: rgba(255,204,0,0.40);
+      border-color: rgba(255, 204, 0, 0.40);
     }
+
     .rc-select option {
       background: #0d1014;
       color: var(--txt);
@@ -716,31 +1064,38 @@
       gap: 6px;
       flex-wrap: wrap;
     }
+
     .rc-color-btn {
-      width: 28px; height: 28px;
+      width: 28px;
+      height: 28px;
       border-radius: 4px;
-      border: 2px solid rgba(255,255,255,0.10);
+      border: 2px solid rgba(255, 255, 255, 0.10);
       cursor: pointer;
       transition: all 0.15s;
       position: relative;
     }
+
     .rc-color-btn:hover {
-      border-color: rgba(255,255,255,0.35);
+      border-color: rgba(255, 255, 255, 0.35);
       transform: scale(1.1);
     }
+
     .rc-color-btn.selected {
       border-color: var(--c-yellow);
-      box-shadow: 0 0 8px rgba(255,204,0,0.35);
+      box-shadow: 0 0 8px rgba(255, 204, 0, 0.35);
     }
+
     .rc-color-btn.selected::after {
       content: '✓';
       position: absolute;
-      top: 50%; left: 50%;
+      top: 50%;
+      left: 50%;
       transform: translate(-50%, -50%);
       font-size: 14px;
       color: #fff;
-      text-shadow: 0 1px 3px rgba(0,0,0,0.7);
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
     }
+
     .rc-color-label {
       font-family: var(--f-mono);
       font-size: 7px;
@@ -761,21 +1116,24 @@
 
     .rc-preview-box {
       background: rgba(5, 8, 14, 0.9);
-      border: 1px solid rgba(255,255,255,0.08);
+      border: 1px solid rgba(255, 255, 255, 0.08);
       border-radius: 4px;
       overflow: hidden;
       position: relative;
     }
+
     .rc-preview-label {
       position: absolute;
-      top: 6px; left: 8px;
+      top: 6px;
+      left: 8px;
       font-family: var(--f-mono);
       font-size: 8px;
       letter-spacing: 2px;
-      color: rgba(255,204,0,0.5);
+      color: rgba(255, 204, 0, 0.5);
       text-transform: uppercase;
       z-index: 2;
     }
+
     #rcPreviewCanvas {
       display: block;
       width: 100%;
@@ -785,26 +1143,29 @@
 
     .rc-map-box {
       background: rgba(5, 8, 14, 0.9);
-      border: 1px solid rgba(255,255,255,0.08);
+      border: 1px solid rgba(255, 255, 255, 0.08);
       border-radius: 4px;
       overflow: hidden;
       position: relative;
       cursor: crosshair;
     }
+
     #rcMapCanvas {
       display: block;
       width: 100%;
       height: 180px;
       background: #060a10;
     }
+
     .rc-map-coords {
       position: absolute;
-      bottom: 6px; right: 8px;
+      bottom: 6px;
+      right: 8px;
       font-family: var(--f-mono);
       font-size: 9px;
       color: var(--c-yellow);
       letter-spacing: 1px;
-      background: rgba(0,0,0,0.6);
+      background: rgba(0, 0, 0, 0.6);
       padding: 2px 6px;
       border-radius: 3px;
     }
@@ -815,14 +1176,15 @@
       justify-content: flex-end;
       gap: 10px;
       padding: 12px 20px;
-      border-top: 1px solid rgba(255,255,255,0.08);
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
       background: rgba(8, 10, 16, 0.5);
       border-radius: 0 0 8px 8px;
     }
+
     .rc-btn-cancel {
       padding: 8px 20px;
       background: transparent;
-      border: 1px solid rgba(255,255,255,0.15);
+      border: 1px solid rgba(255, 255, 255, 0.15);
       color: var(--txt-dim);
       font-family: var(--f-mono);
       font-size: 11px;
@@ -832,14 +1194,16 @@
       border-radius: 4px;
       transition: all 0.15s;
     }
+
     .rc-btn-cancel:hover {
-      border-color: rgba(255,255,255,0.30);
+      border-color: rgba(255, 255, 255, 0.30);
       color: var(--txt);
     }
+
     .rc-btn-deploy {
       padding: 8px 24px;
-      background: linear-gradient(135deg, rgba(255,204,0,0.20), rgba(208,112,32,0.25));
-      border: 1px solid rgba(255,204,0,0.45);
+      background: linear-gradient(135deg, rgba(255, 204, 0, 0.20), rgba(208, 112, 32, 0.25));
+      border: 1px solid rgba(255, 204, 0, 0.45);
       color: var(--c-yellow);
       font-family: var(--f-mono);
       font-size: 12px;
@@ -852,25 +1216,36 @@
       position: relative;
       overflow: hidden;
     }
+
     .rc-btn-deploy:hover {
-      background: linear-gradient(135deg, rgba(255,204,0,0.30), rgba(208,112,32,0.35));
-      box-shadow: 0 0 16px rgba(255,204,0,0.20);
+      background: linear-gradient(135deg, rgba(255, 204, 0, 0.30), rgba(208, 112, 32, 0.35));
+      box-shadow: 0 0 16px rgba(255, 204, 0, 0.20);
       transform: translateY(-1px);
     }
+
     .rc-btn-deploy:active {
       transform: translateY(0);
     }
+
     .rc-btn-deploy::after {
       content: '';
       position: absolute;
-      top: -50%; left: -50%;
-      width: 200%; height: 200%;
-      background: linear-gradient(45deg, transparent 40%, rgba(255,255,255,0.08) 50%, transparent 60%);
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: linear-gradient(45deg, transparent 40%, rgba(255, 255, 255, 0.08) 50%, transparent 60%);
       animation: rcShine 3s infinite;
     }
+
     @keyframes rcShine {
-      0% { transform: translateX(-100%); }
-      100% { transform: translateX(100%); }
+      0% {
+        transform: translateX(-100%);
+      }
+
+      100% {
+        transform: translateX(100%);
+      }
     }
 
     .rc-slider-row {
@@ -879,6 +1254,7 @@
       align-items: center;
       margin-bottom: 2px;
     }
+
     .rc-slider-val {
       font-family: var(--f-mono);
       font-size: 10px;
@@ -889,27 +1265,27 @@
 
     /* BTN Create in left panel */
     .btn-create {
-      border-color: rgba(255,204,0,0.35);
+      border-color: rgba(255, 204, 0, 0.35);
       color: var(--c-yellow);
-      background: rgba(255,204,0,0.06);
+      background: rgba(255, 204, 0, 0.06);
       text-align: center;
       font-weight: 700;
       letter-spacing: 3px;
     }
-    .btn-create:hover {
-      background: rgba(255,204,0,0.14);
-      border-color: rgba(255,204,0,0.55);
-      box-shadow: 0 0 12px rgba(255,204,0,0.12);
-    }
 
+    .btn-create:hover {
+      background: rgba(255, 204, 0, 0.14);
+      border-color: rgba(255, 204, 0, 0.55);
+      box-shadow: 0 0 12px rgba(255, 204, 0, 0.12);
+    }
   </style>
 </head>
+
 <body>
-  <script async src="https://docs.opencv.org/4.9.0/opencv.js"
-    onload="console.log('[OpenCV] loaded')"></script>
+  <script async src="https://docs.opencv.org/4.9.0/opencv.js" onload="console.log('[OpenCV] loaded')"></script>
 
   <!-- TOGGLE TABS -->
-  <button class="panel-toggle left-tog"  id="toggleLeft">CTL</button>
+  <button class="panel-toggle left-tog" id="toggleLeft">CTL</button>
   <button class="panel-toggle right-tog" id="toggleRight">DAT</button>
 
   <!-- ══════════════════ LEFT PANEL ══════════════════ -->
@@ -970,7 +1346,8 @@
         <div class="sec-hd"><span class="dot"></span>Gripper</div>
         <div class="sec-body">
           <div class="ctrl">
-            <div class="ctrl-row"><span class="ctrl-lbl">Max Open</span><span class="ctrl-val" id="vOpen">26mm</span></div>
+            <div class="ctrl-row"><span class="ctrl-lbl">Max Open</span><span class="ctrl-val" id="vOpen">26mm</span>
+            </div>
             <input type="range" id="sOpen" min="14" max="55" value="38" step="1">
           </div>
           <div class="contact-lbl">Finger Sensors</div>
@@ -987,7 +1364,9 @@
         <div class="sec-hd"><span class="dot"></span>Camera</div>
         <div class="sec-body">
           <button id="btnVision" class="btn btn-blue">📷 Robot Cam</button>
-          <div id="visionStatus" style="font-size:8px;letter-spacing:1px;color:var(--txt-dim);text-align:center;margin-bottom:4px;font-family:var(--f-mono);">OFF</div>
+          <div id="visionStatus"
+            style="font-size:8px;letter-spacing:1px;color:var(--txt-dim);text-align:center;margin-bottom:4px;font-family:var(--f-mono);">
+            OFF</div>
           <button id="btnAllCams" class="btn btn-purple">📹 All Robots</button>
         </div>
       </div>
@@ -1074,7 +1453,8 @@
             <span class="rc-label">Arm Color</span>
             <div class="rc-colors" id="rcColors">
               <div>
-                <div class="rc-color-btn selected" data-color="0xF7931E" style="background:#F7931E;" title="KUKA Orange"></div>
+                <div class="rc-color-btn selected" data-color="0xF7931E" style="background:#F7931E;"
+                  title="KUKA Orange"></div>
                 <div class="rc-color-label">KUKA</div>
               </div>
               <div>
@@ -1131,7 +1511,7 @@
           <div class="rc-map-box">
             <span class="rc-preview-label">▸ Deployment Location — click to place</span>
             <canvas id="rcMapCanvas"></canvas>
-            <span id="rcMapCoords" class="rc-map-coords">X: 0.0  Z: 0.0</span>
+            <span id="rcMapCoords" class="rc-map-coords">X: 0.0 Z: 0.0</span>
           </div>
         </div>
       </div>
@@ -1157,7 +1537,9 @@
       <div class="sec">
         <div class="sec-hd"><span class="dot"></span>Robot Status</div>
         <div class="sec-body">
-          <div id="tStatus" class="tcard" style="font-size:9px;letter-spacing:2px;color:var(--c-yellow);text-align:center;font-family:var(--f-mono);"></div>
+          <div id="tStatus" class="tcard"
+            style="font-size:9px;letter-spacing:2px;color:var(--c-yellow);text-align:center;font-family:var(--f-mono);">
+          </div>
         </div>
       </div>
 
@@ -1166,22 +1548,30 @@
         <div class="sec-body">
           <div class="jbar-row">
             <span class="jbar-lbl">Base</span>
-            <div class="jbar-track"><div id="tBaseBar" class="jbar-fill" style="background:var(--c-yellow);width:50%;"></div></div>
+            <div class="jbar-track">
+              <div id="tBaseBar" class="jbar-fill" style="background:var(--c-yellow);width:50%;"></div>
+            </div>
             <span id="tBaseVal" class="jbar-num" style="color:var(--c-yellow);">0°</span>
           </div>
           <div class="jbar-row">
             <span class="jbar-lbl">Shoulder</span>
-            <div class="jbar-track"><div id="tShoulderBar" class="jbar-fill" style="background:var(--c-blue);width:50%;"></div></div>
+            <div class="jbar-track">
+              <div id="tShoulderBar" class="jbar-fill" style="background:var(--c-blue);width:50%;"></div>
+            </div>
             <span id="tShoulderVal" class="jbar-num" style="color:var(--c-blue);">0°</span>
           </div>
           <div class="jbar-row">
             <span class="jbar-lbl">Elbow</span>
-            <div class="jbar-track"><div id="tElbowBar" class="jbar-fill" style="background:var(--c-green);width:50%;"></div></div>
+            <div class="jbar-track">
+              <div id="tElbowBar" class="jbar-fill" style="background:var(--c-green);width:50%;"></div>
+            </div>
             <span id="tElbowVal" class="jbar-num" style="color:var(--c-green);">0°</span>
           </div>
           <div class="jbar-row">
             <span class="jbar-lbl">Wrist</span>
-            <div class="jbar-track"><div id="tWristBar" class="jbar-fill" style="background:#9944bb;width:50%;"></div></div>
+            <div class="jbar-track">
+              <div id="tWristBar" class="jbar-fill" style="background:#9944bb;width:50%;"></div>
+            </div>
             <span id="tWristVal" class="jbar-num" style="color:#9944bb;">0°</span>
           </div>
         </div>
@@ -1248,21 +1638,29 @@
         <div class="sec-body">
           <div class="finger-card">
             <div class="finger-card-hd">
-              <span id="tLDot" style="width:6px;height:6px;border-radius:50%;background:#333;display:inline-block;flex-shrink:0;"></span>
+              <span id="tLDot"
+                style="width:6px;height:6px;border-radius:50%;background:#333;display:inline-block;flex-shrink:0;"></span>
               Left Finger
             </div>
-            <div class="finger-row"><span class="finger-lbl">Tip</span><span id="tLTip" class="finger-val">OFF</span></div>
-            <div class="finger-row"><span class="finger-lbl">Middle</span><span id="tLMid" class="finger-val">OFF</span></div>
-            <div class="finger-row"><span class="finger-lbl">Base</span><span id="tLBase" class="finger-val">OFF</span></div>
+            <div class="finger-row"><span class="finger-lbl">Tip</span><span id="tLTip" class="finger-val">OFF</span>
+            </div>
+            <div class="finger-row"><span class="finger-lbl">Middle</span><span id="tLMid" class="finger-val">OFF</span>
+            </div>
+            <div class="finger-row"><span class="finger-lbl">Base</span><span id="tLBase" class="finger-val">OFF</span>
+            </div>
           </div>
           <div class="finger-card">
             <div class="finger-card-hd">
-              <span id="tRDot" style="width:6px;height:6px;border-radius:50%;background:#333;display:inline-block;flex-shrink:0;"></span>
+              <span id="tRDot"
+                style="width:6px;height:6px;border-radius:50%;background:#333;display:inline-block;flex-shrink:0;"></span>
               Right Finger
             </div>
-            <div class="finger-row"><span class="finger-lbl">Tip</span><span id="tRTip" class="finger-val">OFF</span></div>
-            <div class="finger-row"><span class="finger-lbl">Middle</span><span id="tRMid" class="finger-val">OFF</span></div>
-            <div class="finger-row"><span class="finger-lbl">Base</span><span id="tRBase" class="finger-val">OFF</span></div>
+            <div class="finger-row"><span class="finger-lbl">Tip</span><span id="tRTip" class="finger-val">OFF</span>
+            </div>
+            <div class="finger-row"><span class="finger-lbl">Middle</span><span id="tRMid" class="finger-val">OFF</span>
+            </div>
+            <div class="finger-row"><span class="finger-lbl">Base</span><span id="tRBase" class="finger-val">OFF</span>
+            </div>
           </div>
           <div class="tcard-row" style="margin-bottom:3px;">
             <span class="tcard-lbl">Avg Force</span>
@@ -1281,14 +1679,14 @@
   <script>
     (function () {
       var PW = 200;
-      var left  = document.getElementById('left');
+      var left = document.getElementById('left');
       var right = document.getElementById('right');
-      var tl    = document.getElementById('toggleLeft');
-      var tr    = document.getElementById('toggleRight');
+      var tl = document.getElementById('toggleLeft');
+      var tr = document.getElementById('toggleRight');
       var lv = true, rv = true;
 
       function sync() {
-        tl.style.left  = lv ? PW + 'px' : '0';
+        tl.style.left = lv ? PW + 'px' : '0';
         tr.style.right = rv ? PW + 'px' : '0';
         tl.textContent = lv ? '◀' : '▶';
         tr.textContent = rv ? '▶' : '◀';
@@ -1309,5 +1707,8 @@
   <script type="module" src="/src/api/test2.js"></script>
   <script type="module" src="/src/api/test3.js"></script>
   <script type="module" src="/src/api/test4.js"></script>
+  <script type="module" src="/src/programs/program2.js"></script>
+  <script type="module" src="/src/programs/program3.js"></script>
 </body>
+
 </html>

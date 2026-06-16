@@ -109,6 +109,11 @@ export class VRUI {
     this._sliders = this._defineSliders();
     this._buttons = this._defineButtons();
 
+    // ── API & Keyboard State ──
+    this._apiData = { x: 0.0, z: 0.0, idbox: 1, startBoxId: 1, endBoxId: 5, zone: 'A' };
+    this._editField = null;
+    this._keyboardInput = "";
+
     this._targetPos = new THREE.Vector3();
     this._targetQuat = new THREE.Quaternion();
   }
@@ -136,20 +141,24 @@ export class VRUI {
     const bw3 = (CW - PAD * 2 - 20) / 3;
     let y = 390;
     const btns = [
-      { id: 'grab', label: '✊ GRAB', x: PAD, y, w: bw3, h: BTN_H, color: C.btnGrab, view: 'main', action: () => {
+      {
+        id: 'grab', label: '✊ GRAB', x: PAD, y, w: bw3, h: BTN_H, color: C.btnGrab, view: 'main', action: () => {
           if (typeof window !== 'undefined' && window.autoGrab) {
             window.autoGrab({ step: 1, interval: 80 });
           } else {
             this.cb.grab(true);
           }
-      } },
-      { id: 'release', label: '🤚 RELEASE', x: PAD + bw3 + 10, y, w: bw3, h: BTN_H, color: C.btnRelease, view: 'main', action: () => {
+        }
+      },
+      {
+        id: 'release', label: '🤚 RELEASE', x: PAD + bw3 + 10, y, w: bw3, h: BTN_H, color: C.btnRelease, view: 'main', action: () => {
           if (typeof window !== 'undefined' && window.autoRelease) {
             window.autoRelease({ step: 1, interval: 80 });
           } else {
             this.cb.release();
           }
-      } },
+        }
+      },
       { id: 'reset', label: '🔄 RESET', x: PAD + bw3 * 2 + 20, y, w: bw3, h: BTN_H, color: C.btnReset, view: 'main', action: () => this.cb.resetJoints() },
     ];
     y += BTN_GAP;
@@ -162,13 +171,75 @@ export class VRUI {
     btns.push(
       { id: 'exit', label: '🚪 EXIT VR', x: PAD, y, w: CW - PAD * 2, h: 32, color: '#aa3333', view: 'main', action: () => { if (this.cb.exitXR) this.cb.exitXR(); } }
     );
+    y += 45;
+    btns.push(
+      { id: 'api', label: '⚙️ API SCRIPTS', x: PAD, y, w: CW - PAD * 2, h: BTN_H, color: 'rgba(100,200,255,0.3)', view: 'main', action: () => { this._view = 'api'; } }
+    );
 
     // Back buttons
     btns.push(
       { id: 'back_camera', label: '◀ BACK', x: PAD, y: 76, w: 100, h: BTN_H, color: C.btnBg, view: 'camera', action: () => { this._view = 'main'; } },
       { id: 'back_robots', label: '◀ BACK', x: PAD, y: 76, w: 100, h: BTN_H, color: C.btnBg, view: 'robots', action: () => { this._view = 'main'; } },
       { id: 'back_create', label: '◀ BACK', x: PAD, y: 76, w: 100, h: BTN_H, color: C.btnBg, view: 'create', action: () => { this._view = 'main'; if (this.cb.closeCreator) this.cb.closeCreator(); } },
-      { id: 'deploy_robot', label: '⚡ DEPLOY', x: CW - PAD - 120, y: 76, w: 120, h: BTN_H, color: 'rgba(255,204,0,0.3)', view: 'create', action: () => { if (this.cb.deployCreator) this.cb.deployCreator(); this._view = 'main'; } }
+      { id: 'deploy_robot', label: '⚡ DEPLOY', x: CW - PAD - 120, y: 76, w: 120, h: BTN_H, color: 'rgba(255,204,0,0.3)', view: 'create', action: () => { if (this.cb.deployCreator) this.cb.deployCreator(); this._view = 'main'; } },
+      { id: 'back_api', label: '◀ BACK', x: PAD, y: 76, w: 100, h: BTN_H, color: C.btnBg, view: 'api', action: () => { this._view = 'main'; } },
+      { id: 'back_scenario', label: '◀ BACK', x: PAD, y: 76, w: 100, h: BTN_H, color: C.btnBg, view: 'scenario', action: () => { this._view = 'api'; } },
+      { id: 'back_keyboard', label: '◀ CANCEL', x: PAD, y: 76, w: 100, h: BTN_H, color: C.btnBg, view: 'keyboard', action: () => { 
+        if (['startBoxId', 'endBoxId'].includes(this._editField)) {
+          this._view = 'scenario';
+        } else {
+          this._view = 'api'; 
+        }
+      } }
+    );
+
+    // API Scripts Execution Buttons
+    btns.push(
+      {
+        id: 'run_test2', label: '▶ RUN TEST 2 (NAVIGATE)', x: PAD + 20, y: 370, w: CW - PAD * 2 - 40, h: BTN_H + 10, color: 'rgba(0,180,100,0.4)', view: 'api', action: () => {
+          if (window.moveTo) {
+            window.moveTo(parseFloat(this._apiData.x), parseFloat(this._apiData.z));
+            this._view = 'main';
+          } else console.log("moveTo not found in window");
+        }
+      },
+      {
+        id: 'run_test4', label: '▶ RUN TEST 4 (PICK & PLACE)', x: PAD + 20, y: 430, w: CW - PAD * 2 - 40, h: BTN_H + 10, color: 'rgba(200,100,200,0.4)', view: 'api', action: () => {
+          if (window.pickAndPlace) {
+            window.pickAndPlace(parseInt(this._apiData.idbox) || 1, { x: parseFloat(this._apiData.x), z: parseFloat(this._apiData.z) });
+            this._view = 'main';
+          } else console.log("pickAndPlace not found in window");
+        }
+      },
+      {
+        id: 'run_zone_btn', label: '▶ RUN PICK & PLACE ZONE', x: PAD + 20, y: 490, w: CW - PAD * 2 - 40, h: BTN_H + 10, color: 'rgba(50,150,255,0.4)', view: 'api', action: () => {
+          if (window.pickAndPlaceZone) {
+            window.pickAndPlaceZone(parseInt(this._apiData.idbox) || 1, this._apiData.zone);
+            this._view = 'main';
+          } else console.log("pickAndPlaceZone not found in window");
+        }
+      },
+      {
+        id: 'runsenario_btn', label: '▶ RUN SCENARIO (PROGRAM.JS)', x: PAD + 20, y: 550, w: CW - PAD * 2 - 40, h: BTN_H + 10, color: 'rgba(255,150,50,0.4)', view: 'api', action: () => {
+          this._view = 'scenario';
+        }
+      }
+    );
+
+    // Scenario Execution Buttons
+    btns.push(
+      {
+        id: 'start_scenario', label: '▶ START SCENARIO', x: PAD + 20, y: 490, w: CW - PAD * 2 - 40, h: BTN_H + 10, color: 'rgba(0,200,100,0.5)', view: 'scenario', action: () => {
+          if (window.runScenario) {
+            window.runScenario(
+              parseInt(this._apiData.startBoxId) || 1,
+              parseInt(this._apiData.endBoxId) || 5,
+              this._apiData.zone
+            );
+            this._view = 'main';
+          } else console.log("runScenario not found in window");
+        }
+      }
     );
 
     return btns;
@@ -181,14 +252,14 @@ export class VRUI {
     this.mesh.visible = true;
     this._needsPositioning = true;
     this._framesSinceShow = 0;
-    this.scene.add(this.mesh);
+    this.xrRig.add(this.mesh);
   }
 
   hide() {
     if (!this._visible) return;
     this._visible = false;
     this.mesh.visible = false;
-    this.scene.remove(this.mesh);
+    this.xrRig.remove(this.mesh);
   }
 
   toggle() { this._visible ? this.hide() : this.show(); }
@@ -198,7 +269,7 @@ export class VRUI {
   activate() {
     this._tabActive = true;
     this.tabMesh.visible = true;
-    this.scene.add(this.tabMesh);
+    this.xrRig.add(this.tabMesh);
     this._drawTab();
   }
 
@@ -207,7 +278,7 @@ export class VRUI {
     this.hide();
     this._tabActive = false;
     this.tabMesh.visible = false;
-    this.scene.remove(this.tabMesh);
+    this.xrRig.remove(this.tabMesh);
   }
 
   // ─────────────────── Per-frame update ───────────────────
@@ -241,7 +312,7 @@ export class VRUI {
         const id = input.id || 'default';
         if (input.triggerPressed) anyTriggerPressed = true;
         const wasHeld = this._triggerHeldMap[id] || false;
-        
+
         if (input.ray) {
           this._raycaster.set(input.ray.origin, input.ray.direction);
           const tabHits = this._raycaster.intersectObject(this.tabMesh);
@@ -254,8 +325,8 @@ export class VRUI {
         } else if (input.touchPos) {
           this.tabMesh.worldToLocal(this._localPos.copy(input.touchPos));
           if (this._localPos.z < 0.02 && this._localPos.z > -0.15 &&
-              this._localPos.x >= -0.075 && this._localPos.x <= 0.075 &&
-              this._localPos.y >= -0.025 && this._localPos.y <= 0.025) {
+            this._localPos.x >= -0.075 && this._localPos.x <= 0.075 &&
+            this._localPos.y >= -0.025 && this._localPos.y <= 0.025) {
             this._tabHovered = true;
             anyTriggerPressed = true;
             if (!wasHeld) toggledThisFrame = true;
@@ -302,12 +373,24 @@ export class VRUI {
         }
       } else if (input.touchPos && !this._tabHovered) {
         this.mesh.worldToLocal(this._localPos.copy(input.touchPos));
-        if (this._localPos.z < 0.02 && this._localPos.z > -0.15 &&
-            this._localPos.x >= -0.4 && this._localPos.x <= 0.4 &&
-            this._localPos.y >= -0.225 && this._localPos.y <= 0.225) {
+
+        // Add hysteresis so trembling fingers don't rapidly trigger clicks
+        const zLimit = wasHeld ? 0.06 : 0.04;
+        const xLimit = wasHeld ? 0.27 : 0.24;
+        const yLimit = wasHeld ? 0.38 : 0.35;
+
+        if (this._localPos.z < zLimit && this._localPos.z > -0.15 &&
+          this._localPos.x >= -xLimit && this._localPos.x <= xLimit &&
+          this._localPos.y >= -yLimit && this._localPos.y <= yLimit) {
+
           triggered = true; // Synthetic press
-          const u = (this._localPos.x + 0.4) / 0.8;
-          const v = (this._localPos.y + 0.225) / 0.45;
+
+          // Clamp values so dragging outside doesn't warp the UV
+          const clampedX = Math.max(-0.24, Math.min(0.24, this._localPos.x));
+          const clampedY = Math.max(-0.35, Math.min(0.35, this._localPos.y));
+
+          const u = (clampedX + 0.24) / 0.48;
+          const v = (clampedY + 0.35) / 0.70;
           uvPos = { x: u * CW, y: (1 - v) * CH };
         }
       }
@@ -337,37 +420,37 @@ export class VRUI {
   _positionPanel() {
     // If it's already positioned (anchored), don't move it!
     // This allows the user to lean in and touch it physically without it running away.
+    // Since it's a child of xrRig, it will follow joystick movement automatically!
     if (!this._needsPositioning && this.mesh.position.lengthSq() > 0.01) return;
 
-    const rp = this.xrRig.position;
-    let headPos = new THREE.Vector3(rp.x, rp.y + 1.5, rp.z);
-
-    // Try camera for better accuracy
-    let hasGoodCam = false;
     const cam = this.xrRig.children.find(c => c.isCamera);
-    if (cam) {
-      cam.updateWorldMatrix(true, false);
-      const cp = new THREE.Vector3();
-      cam.getWorldPosition(cp);
-      if (cp.lengthSq() > 0.1 || this._framesSinceShow > 30) {
-        headPos.copy(cp);
-        hasGoodCam = true;
-      }
-    }
+    if (!cam) return;
 
     this._framesSinceShow = (this._framesSinceShow || 0) + 1;
+    if (this._framesSinceShow < 5) return; // Wait a few frames for camera to settle
 
-    // Wait until we have a good camera position or timeout
-    if (!hasGoodCam && this._framesSinceShow < 30) {
-      return; // Skip positioning this frame
-    }
+    // Local head position inside xrRig
+    const headLocalPos = cam.position.clone();
 
-    // Anchor to the LEFT of the user, slightly angled
-    this._targetPos.set(headPos.x - 0.65, headPos.y - 0.15, headPos.z - 0.9);
+    // Local forward direction (projected to horizontal plane)
+    const camDir = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
+    camDir.y = 0;
+    if (camDir.lengthSq() < 0.001) camDir.set(0, 0, -1);
+    camDir.normalize();
+
+    // Local left direction
+    const camLeft = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), camDir).normalize();
+
+    // Anchor: 0.5m forward, 0.35m left, 0.2m below eye level
+    this._targetPos.copy(headLocalPos);
+    this._targetPos.add(camDir.clone().multiplyScalar(0.50));
+    this._targetPos.add(camLeft.clone().multiplyScalar(0.35));
+    this._targetPos.y -= 0.20;
+
     this.mesh.position.copy(this._targetPos);
 
-    // Face the user (swap eye/target so front face points to head)
-    const lookMat = new THREE.Matrix4().lookAt(headPos, this.mesh.position, new THREE.Vector3(0, 1, 0));
+    // Face the user head
+    const lookMat = new THREE.Matrix4().lookAt(headLocalPos, this.mesh.position, new THREE.Vector3(0, 1, 0));
     const lookQ = new THREE.Quaternion().setFromRotationMatrix(lookMat);
     this.mesh.quaternion.copy(lookQ);
 
@@ -376,20 +459,31 @@ export class VRUI {
 
   // ─────────────────── Tab positioning + drawing ───────────────────
   _positionTab() {
-    const rp = this.xrRig.position;
-    let headPos = new THREE.Vector3(rp.x, rp.y + 1.5, rp.z);
     const cam = this.xrRig.children.find(c => c.isCamera);
-    if (cam) {
-      cam.updateWorldMatrix(true, false);
-      const cp = new THREE.Vector3();
-      cam.getWorldPosition(cp);
-      if (cp.lengthSq() > 0.5) headPos.copy(cp);
-    }
+    if (!cam) return;
 
-    // Tab: lower-left of view, always accessible
-    const tabTarget = new THREE.Vector3(headPos.x - 0.35, headPos.y - 0.45, headPos.z - 0.7);
+    // Local head position
+    const headLocalPos = cam.position.clone();
+
+    const camDir = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
+    camDir.y = 0;
+    if (camDir.lengthSq() < 0.001) camDir.set(0, 0, -1);
+    camDir.normalize();
+
+    const camLeft = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), camDir).normalize();
+
+    // Tab: directly below the main panel
+    const tabTarget = headLocalPos.clone();
+    tabTarget.add(camDir.clone().multiplyScalar(0.50));
+    tabTarget.add(camLeft.clone().multiplyScalar(0.35));
+    tabTarget.y -= 0.65;
+
     this.tabMesh.position.lerp(tabTarget, 0.08);
-    this.tabMesh.lookAt(headPos);
+
+    // Look at head
+    const lookMat = new THREE.Matrix4().lookAt(headLocalPos, this.tabMesh.position, new THREE.Vector3(0, 1, 0));
+    const lookQ = new THREE.Quaternion().setFromRotationMatrix(lookMat);
+    this.tabMesh.quaternion.slerp(lookQ, 0.08);
   }
 
   _drawTab() {
@@ -422,6 +516,7 @@ export class VRUI {
 
   // ─────────────────── Interaction processing ───────────────────
   _processInteraction(triggerPressed, isClick = false) {
+    const initialView = this._view;
     const { x, y } = this._hoverUV;
 
     // Check sliders
@@ -507,7 +602,115 @@ export class VRUI {
       }
     }
 
+    // Check api view interactions
+    if (this._view === 'api') {
+      let ty = 170;
+      const checkInput = (id) => {
+        if (x >= PAD + 100 && x <= PAD + 300 && y >= ty && y <= ty + 40) {
+          this._hoveredEl = id;
+          if (isClick) {
+            if (id === 'api_zone') {
+              const zones = ['A', 'B', 'C', 'D'];
+              let idx = zones.indexOf(this._apiData.zone);
+              this._apiData.zone = zones[(idx + 1) % zones.length];
+            } else {
+              this._editField = id.replace('api_', ''); // 'x', 'z', 'idbox'
+              this._keyboardInput = this._apiData[this._editField].toString();
+              this._view = 'keyboard';
+            }
+          }
+        }
+        ty += 55;
+      };
+      checkInput('api_x');
+      checkInput('api_z');
+      checkInput('api_idbox');
+      checkInput('api_zone');
+    }
+
+    // Check scenario view interactions
+    if (this._view === 'scenario') {
+      let ty = 170;
+      const checkInput = (id) => {
+        if (x >= PAD + 100 && x <= PAD + 300 && y >= ty && y <= ty + 40) {
+          this._hoveredEl = id;
+          if (isClick) {
+            if (id === 'scen_zone') {
+              const zones = ['A', 'B', 'C', 'D'];
+              let idx = zones.indexOf(this._apiData.zone);
+              this._apiData.zone = zones[(idx + 1) % zones.length];
+            } else {
+              this._editField = id.replace('scen_', ''); // 'startBoxId', 'endBoxId'
+              this._keyboardInput = this._apiData[this._editField].toString();
+              this._view = 'keyboard';
+            }
+          }
+        }
+        ty += 55;
+      };
+      checkInput('scen_startBoxId');
+      checkInput('scen_endBoxId');
+      checkInput('scen_zone');
+    }
+
+    // Check keyboard interactions
+    if (this._view === 'keyboard') {
+      const keys = [
+        ['7', '8', '9'],
+        ['4', '5', '6'],
+        ['1', '2', '3'],
+        ['-', '0', '.'],
+        ['CLR', 'DEL', 'ENT']
+      ];
+      let ty = 250;
+      const btnW = 34; const btnH = 46; const gap = 6;
+      for (let r = 0; r < keys.length; r++) {
+        let rowWidth = 0;
+        for (let c = 0; c < keys[r].length; c++) {
+          let kw = btnW;
+          if (keys[r][c] === 'SPACE') kw = btnW * 4 + gap * 3;
+          else if (keys[r][c] === 'DEL' || keys[r][c] === 'ENT') kw = btnW * 2 + gap;
+          rowWidth += kw + (c < keys[r].length - 1 ? gap : 0);
+        }
+        let kx = CW / 2 - rowWidth / 2;
+        let ky = ty + r * (btnH + gap);
+        for (let c = 0; c < keys[r].length; c++) {
+          const key = keys[r][c];
+          let kw = btnW;
+          if (key === 'SPACE') kw = btnW * 4 + gap * 3;
+          else if (key === 'DEL' || key === 'ENT') kw = btnW * 2 + gap;
+
+          if (x >= kx && x <= kx + kw && y >= ky && y <= ky + btnH) {
+            this._hoveredEl = 'key_' + key;
+            if (isClick) {
+              if (key === 'ENT') {
+                let parsed = parseFloat(this._keyboardInput);
+                if (isNaN(parsed) && this._keyboardInput !== "") parsed = this._keyboardInput;
+                else if (this._keyboardInput === "") parsed = 0;
+                this._apiData[this._editField] = parsed;
+                if (['startBoxId', 'endBoxId'].includes(this._editField)) {
+                  this._view = 'scenario';
+                } else {
+                  this._view = 'api';
+                }
+              } else if (key === 'DEL') {
+                this._keyboardInput = this._keyboardInput.slice(0, -1);
+              } else if (key === 'CLR') {
+                this._keyboardInput = "";
+              } else if (key === 'SPACE') {
+                this._keyboardInput += " ";
+              } else {
+                this._keyboardInput += key;
+              }
+            }
+          }
+          kx += kw + gap;
+        }
+      }
+    }
+
     // Check buttons
+    if (this._view !== initialView) return;
     for (const b of this._buttons) {
       if (b.view && b.view !== this._view) continue;
       if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) {
@@ -572,6 +775,12 @@ export class VRUI {
       this._drawRobots(ctx);
     } else if (this._view === 'create') {
       this._drawCreator(ctx);
+    } else if (this._view === 'api') {
+      this._drawApi(ctx);
+    } else if (this._view === 'scenario') {
+      this._drawScenario(ctx);
+    } else if (this._view === 'keyboard') {
+      this._drawKeyboard(ctx);
     }
 
     // ── Buttons ──
@@ -993,4 +1202,149 @@ export class VRUI {
     this.tabMesh.geometry.dispose();
     this.tabMesh.material.dispose();
   }
+
+  _drawApi(ctx) {
+    let ty = 140;
+    ctx.fillStyle = C.accent;
+    ctx.font = '16px "Share Tech Mono", monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('API SCRIPT CONFIGURATION', PAD + 10, ty);
+
+    ctx.strokeStyle = 'rgba(255,204,0,0.15)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(PAD, ty + 8); ctx.lineTo(CW - PAD, ty + 8); ctx.stroke();
+    ty += 30;
+
+    const drawInput = (label, val, yOff, id) => {
+      ctx.fillStyle = C.textDim;
+      ctx.font = '14px "Share Tech Mono", monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText(label, PAD + 20, yOff + 25);
+
+      const isHovered = this._hoveredEl === id;
+      ctx.fillStyle = isHovered ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.3)';
+      this._roundRect(PAD + 100, yOff, 200, 40, 6, ctx.fillStyle);
+      ctx.strokeStyle = isHovered ? C.accent : 'rgba(255,255,255,0.2)';
+      this._roundRectStroke(PAD + 100, yOff, 200, 40, 6);
+
+      ctx.fillStyle = '#fff';
+      ctx.font = '18px "Share Tech Mono", monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(val, PAD + 200, yOff + 26);
+    };
+
+    drawInput('TARGET X', this._apiData.x.toFixed(2), ty, 'api_x'); ty += 55;
+    drawInput('TARGET Z', this._apiData.z.toFixed(2), ty, 'api_z'); ty += 55;
+    drawInput('ID BOX', this._apiData.idbox.toString(), ty, 'api_idbox'); ty += 55;
+    drawInput('TARGET ZONE', 'ZONE ' + this._apiData.zone, ty, 'api_zone'); ty += 55;
+  }
+
+  _drawScenario(ctx) {
+    let ty = 140;
+    ctx.fillStyle = C.accent;
+    ctx.font = '16px "Share Tech Mono", monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('SCENARIO CONFIGURATION (PROGRAM.JS)', PAD + 10, ty);
+
+    ctx.strokeStyle = 'rgba(255,204,0,0.15)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(PAD, ty + 8); ctx.lineTo(CW - PAD, ty + 8); ctx.stroke();
+    ty += 30;
+
+    const drawInput = (label, val, yOff, id) => {
+      ctx.fillStyle = C.textDim;
+      ctx.font = '14px "Share Tech Mono", monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText(label, PAD + 20, yOff + 25);
+
+      const isHovered = this._hoveredEl === id;
+      ctx.fillStyle = isHovered ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.3)';
+      this._roundRect(PAD + 100, yOff, 200, 40, 6, ctx.fillStyle);
+      ctx.strokeStyle = isHovered ? C.accent : 'rgba(255,255,255,0.2)';
+      this._roundRectStroke(PAD + 100, yOff, 200, 40, 6);
+
+      ctx.fillStyle = '#fff';
+      ctx.font = '18px "Share Tech Mono", monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(val, PAD + 200, yOff + 26);
+    };
+
+    drawInput('START BOX', this._apiData.startBoxId.toString(), ty, 'scen_startBoxId'); ty += 55;
+    drawInput('END BOX', this._apiData.endBoxId.toString(), ty, 'scen_endBoxId'); ty += 55;
+    drawInput('TARGET ZONE', 'ZONE ' + this._apiData.zone, ty, 'scen_zone'); ty += 55;
+  }
+
+  _drawKeyboard(ctx) {
+    let ty = 140;
+    ctx.fillStyle = C.accent;
+    ctx.font = '16px "Share Tech Mono", monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('ENTER VALUE FOR: ' + (this._editField || '').toUpperCase(), PAD + 10, ty);
+
+    ty += 30;
+    // Input display box
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    this._roundRect(PAD + 20, ty, CW - PAD * 2 - 40, 50, 6, ctx.fillStyle);
+    ctx.strokeStyle = C.accent;
+    this._roundRectStroke(PAD + 20, ty, CW - PAD * 2 - 40, 50, 6);
+
+    ctx.fillStyle = '#fff';
+    ctx.font = '24px "Share Tech Mono", monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(this._keyboardInput + (Math.floor(Date.now() / 500) % 2 === 0 ? '_' : ''), CW / 2, ty + 34);
+
+    ty += 80;
+
+    const keys = [
+      ['7', '8', '9'],
+      ['4', '5', '6'],
+      ['1', '2', '3'],
+      ['-', '0', '.'],
+      ['CLR', 'DEL', 'ENT']
+    ];
+
+    const btnW = 34;
+    const btnH = 46;
+    const gap = 6;
+
+    for (let r = 0; r < keys.length; r++) {
+      let rowWidth = 0;
+      for (let c = 0; c < keys[r].length; c++) {
+        let kw = btnW;
+        if (keys[r][c] === 'SPACE') kw = btnW * 4 + gap * 3;
+        else if (keys[r][c] === 'DEL' || keys[r][c] === 'ENT') kw = btnW * 2 + gap;
+        rowWidth += kw + (c < keys[r].length - 1 ? gap : 0);
+      }
+
+      let kx = CW / 2 - rowWidth / 2;
+      let ky = ty + r * (btnH + gap);
+
+      for (let c = 0; c < keys[r].length; c++) {
+        const key = keys[r][c];
+
+        let kw = btnW;
+        if (key === 'SPACE') kw = btnW * 4 + gap * 3;
+        else if (key === 'DEL' || key === 'ENT') kw = btnW * 2 + gap;
+
+        const isHovered = this._hoveredEl === 'key_' + key;
+
+        let bg = 'rgba(255,255,255,0.1)';
+        if (key === 'ENT') bg = 'rgba(0,180,100,0.3)';
+        if (key === 'DEL' || key === 'CLR') bg = 'rgba(200,50,50,0.3)';
+        if (isHovered) bg = 'rgba(255,255,255,0.3)';
+
+        this._roundRect(kx, ky, kw, btnH, 6, bg);
+        ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+        this._roundRectStroke(kx, ky, kw, btnH, 6);
+
+        ctx.fillStyle = '#fff';
+        ctx.font = '18px "Share Tech Mono", monospace';
+        let label = key === 'SPACE' ? 'SPACE' : key;
+        ctx.fillText(label, kx + kw / 2, ky + btnH / 2 + 6);
+
+        kx += kw + gap;
+      }
+    }
+  }
+
 }

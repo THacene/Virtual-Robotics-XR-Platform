@@ -8,51 +8,35 @@
    * Runs the Box Sorting Scenario
    * @param {number} startBoxId - ID of the first box to pick
    * @param {number} endBoxId - ID of the last box to pick
-   * @param {number} zoneX - X coordinate of the drop zone
-   * @param {number} zoneZ - Z coordinate of the drop zone
+   * @param {string} zoneName - Name of the drop zone (e.g., 'A', 'B', 'C', 'D')
    */
-  window.runScenario = async function(startBoxId = 1, endBoxId = 5, zoneX = -5, zoneZ = 5) {
-    console.log(`[Scenario] 🚀 Started: Moving boxes ${startBoxId} to ${endBoxId} to zone (${zoneX}, ${zoneZ})`);
+  window.runScenario = async function(startBoxId = 1, endBoxId = 5, zoneName = 'A') {
+    const ZONES = {
+      'A': { x: -5, z: 5 },
+      'B': { x: 5, z: 5 },
+      'C': { x: -5, z: -5 },
+      'D': { x: 5, z: -5 }
+    };
     
-    // Wait for the pickAndPlace API to be available
-    while (!window.pickAndPlace) {
+    // Default to Zone A if not found
+    const targetZone = ZONES[zoneName] || ZONES['A'];
+    const zoneX = targetZone.x;
+    const zoneZ = targetZone.z;
+
+    console.log(`[Scenario] 🚀 Started: Moving boxes ${startBoxId} to ${endBoxId} to Zone ${zoneName} (${zoneX}, ${zoneZ})`);
+    
+    // Wait for the pickAndPlaceZone API to be available
+    while (!window.pickAndPlaceZone) {
       await new Promise(resolve => setTimeout(resolve, 500));
     }
 
     let placedCount = 0;
 
     for (let i = startBoxId; i <= endBoxId; i++) {
-      // 1. Calculate a neat drop position for this box
-      let targetX = zoneX + (placedCount * 0.6);
-      let targetZ = zoneZ;
-
-      // Dynamic Drop Location: Check if the spot is blocked by other boxes (or previously placed boxes)
-      if (window.__boxes) {
-        let isBlocked = true;
-        while (isBlocked) {
-          isBlocked = false;
-          for (const b of window.__boxes) {
-            if (b.id === i) continue; // ignore the box we are currently moving
-            // If another box is within 0.5m of our target, it's blocked!
-            const d = Math.hypot(b.body.position.x - targetX, b.body.position.z - targetZ);
-            if (d < 0.55) {
-              isBlocked = true;
-              targetX += 0.6; // Shift target to the right and try again
-              break;
-            }
-          }
-        }
-      }
-
-      const dropTarget = {
-        x: targetX,
-        z: targetZ
-      };
-
-      console.log(`[Scenario] 📦 Starting Box #${i}. Target: (${dropTarget.x.toFixed(2)}, ${dropTarget.z.toFixed(2)})`);
+      console.log(`[Scenario] 📦 Starting Box #${i}. Target Zone: ${zoneName}`);
       
-      // 2. Start the pick and place mission using the active robot
-      const mission = await window.pickAndPlace(i, dropTarget);
+      // 1. Start the pick and place mission using the new Zone API
+      const mission = await window.pickAndPlaceZone(i, zoneName);
       
       // 3. Polling loop to wait until the box is placed
       while (true) {
@@ -72,6 +56,6 @@
     console.log(`[Scenario] 🎉 Mission Accomplished! All ${placedCount} boxes moved successfully.`);
   };
 
-  console.log('[Scenario] ✅ program.js loaded. Run: runScenario(1, 5, -5, 5)');
+  console.log('[Scenario] ✅ program.js loaded. Run: runScenario(1, 5, "A")');
 
 })();

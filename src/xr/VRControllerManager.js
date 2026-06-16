@@ -51,6 +51,11 @@ export class VRControllerManager {
     this.rayR = null;     this.rayL = null;
 
     this._active = false;
+
+    // Teleportation state
+    this.teleporting = false;
+    this.teleportTarget = new THREE.Vector3();
+    this.teleportMarker = null;
   }
 
   // ─────────────────── setup ───────────────────
@@ -74,11 +79,18 @@ export class VRControllerManager {
     this._modeIndicatorR = this._buildModeIndicator();
     this.gripR.add(this._modeIndicatorR);
 
-    // Rays (shorter so they don't 'go too far away' into the distance)
     this.rayR = this._buildRay(0x00ffdd, 1.5);
     this.rayL = this._buildRay(0xffaa55, 1.2);
     this.ctrlR.add(this.rayR);
     this.ctrlL.add(this.rayL);
+
+    // Teleport Marker
+    this.teleportMarker = new THREE.Mesh(
+      new THREE.RingGeometry(0.15, 0.2, 32).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.4 })
+    );
+    this.teleportMarker.visible = false;
+    this.scene.add(this.teleportMarker);
 
     // ── Events ──
     this.ctrlR.addEventListener('connected', e => { this.srcR = e.data; });
@@ -99,12 +111,24 @@ export class VRControllerManager {
       this.cb.release();
     });
 
-    // Trigger L (for UI interaction with left hand if needed)
+    // Trigger L (Teleportation + UI interaction)
     this.ctrlL.addEventListener('selectstart', () => {
       this.triggerL = true;
+      if (this.srcL?.hand) return;
+      if (this.cb.isUIHovered && this.cb.isUIHovered()) return;
+      this.teleporting = true;
     });
     this.ctrlL.addEventListener('selectend', () => {
       this.triggerL = false;
+      if (this.srcL?.hand) return;
+      if (this.teleporting) {
+        if (this.teleportMarker.visible && this.cb.teleport) {
+          this.cb.teleport(this.teleportTarget.x, this.teleportTarget.z);
+          this._haptic('left', 0.5, 60);
+        }
+        this.teleporting = false;
+        this.teleportMarker.visible = false;
+      }
     });
 
     // Squeeze L → switch robot
@@ -166,7 +190,7 @@ export class VRControllerManager {
       if (Math.abs(tx) > DEAD_ZONE) {
         this.cb.moveJoint('elbow', active.jTarget.elbow + (tx * JOINT_SPEED * dt));
       }
-    } else {
+    } else if (this.jointMode === 1) {
       // Mode 1 — Base (X) + Wrist (Y)
       if (Math.abs(tx) > DEAD_ZONE) {
         this.cb.moveJoint('base', active.jTarget.base + (tx * BASE_SPEED * dt));
@@ -174,11 +198,19 @@ export class VRControllerManager {
       if (Math.abs(ty) > DEAD_ZONE) {
         this.cb.moveJoint('wrist', active.jTarget.wrist + (-ty * JOINT_SPEED * dt));
       }
+    } else if (this.jointMode === 2) {
+      // Mode 2 — Player Movement (VR only)
+      if (Math.abs(ty) > DEAD_ZONE) {
+        if (this.cb.movePlayer) this.cb.movePlayer(0, -ty * 2.5 * dt); // 2.5 m/s forward/back
+      }
+      if (Math.abs(tx) > DEAD_ZONE) {
+        if (this.cb.turnPlayer) this.cb.turnPlayer(-tx * 1.5 * dt); // 1.5 rad/s smooth turn
+      }
     }
 
-    // ── Thumbstick click (btn 3) → toggle joint mode ──
+    // ── Thumbstick click (btn 3) → toggle mode ──
     if (this._rising('right', 3, gp.buttons[3])) {
-      this.jointMode = this.jointMode === 0 ? 1 : 0;
+      this.jointMode = (this.jointMode + 1) % 3;
       this._updateModeIndicator();
       this._haptic('right', 0.3, 40);
     }
@@ -223,6 +255,24 @@ export class VRControllerManager {
     if (this._rising('left', 5, gp.buttons[5])) {
       if (this.cb.openRobotsList) this.cb.openRobotsList();
       this._haptic('left', 0.3, 40);
+    }
+
+    // ── Update Teleport Marker ──
+    if (this.teleporting) {
+      const ray = this.getRay('left');
+      if (ray && ray.direction.y < -0.05) {
+        const t = -ray.origin.y / ray.direction.y;
+        if (t > 0 && t < 15) { // Max 15m teleport
+          this.teleportTarget.copy(ray.origin).add(ray.direction.multiplyScalar(t));
+          this.teleportMarker.position.copy(this.teleportTarget);
+          this.teleportMarker.position.y = 0.01; // Slightly above floor
+          this.teleportMarker.visible = true;
+        } else {
+          this.teleportMarker.visible = false;
+        }
+      } else {
+        this.teleportMarker.visible = false;
+      }
     }
   }
 
@@ -291,7 +341,9 @@ export class VRControllerManager {
 
   _updateModeIndicator() {
     if (!this._modeIndicatorR) return;
-    const c = this.jointMode === 0 ? 0x44aaff : 0xffcc00;
+    let c = 0x44aaff; // Mode 0 (Blue) -> Shoulder/Elbow
+    if (this.jointMode === 1) c = 0xffcc00; // Mode 1 (Yellow) -> Base/Wrist
+    if (this.jointMode === 2) c = 0x00ffaa; // Mode 2 (Green) -> Player Movement
     this._modeIndicatorR.material.color.setHex(c);
   }
 
@@ -312,5 +364,12 @@ export class VRControllerManager {
     }
     this.ctrlR = this.ctrlL = this.gripR = this.gripL = null;
     this.srcR  = this.srcL  = null;
+
+    if (this.teleportMarker) {
+      this.scene.remove(this.teleportMarker);
+      this.teleportMarker.geometry.dispose();
+      this.teleportMarker.material.dispose();
+      this.teleportMarker = null;
+    }
   }
 }

@@ -26,6 +26,7 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.xr.enabled = true;  // ← WebXR من البداية
+renderer.xr.setFramebufferScaleFactor(2.0); // 🚀 Improve XR resolution/quality
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
@@ -567,7 +568,15 @@ function applyThumbstickToActive() {
   const ly = gp.axes[3] ?? 0;
   const dead = 0.15;
   const active = getActive(); const m = active.description.movement;
-  active.setDrive(Math.abs(ly) > dead ? -ly * m.speed : 0, Math.abs(lx) > dead ? -lx * m.turn : 0);
+  const s = Math.abs(ly) > dead ? -ly * m.speed : 0;
+  const t = Math.abs(lx) > dead ? -lx * m.turn : 0;
+  
+  if (robotApi?.listener?.controlsDrive && s === 0 && t === 0) {
+    for (const r of robots) if (r !== active) r.setDrive(0, 0);
+    return;
+  }
+
+  active.setDrive(s, t);
   for (const r of robots) if (r !== active) r.setDrive(0, 0);
 }
 
@@ -781,6 +790,87 @@ _xrExit.style.cssText = "position:fixed;top:14px;right:14px;z-index:10000;paddin
 document.body.appendChild(_xrExit);
 _xrExit.addEventListener('click', () => _xrSess?.end());
 
+// ===== AR HIT TEST GLOBALS =====
+let _arReticle = null;
+let _arHitTestSource = null;
+let _arHitTestSourceRequested = false;
+let _arPlaced = false;
+
+function initARReticle() {
+  if (_arReticle) return;
+  _arReticle = new THREE.Mesh(
+    new THREE.RingGeometry(0.15, 0.2, 32).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.4 })
+  );
+  _arReticle.matrixAutoUpdate = false;
+  _arReticle.visible = false;
+  xrRig.add(_arReticle);
+}
+initARReticle();
+
+function onARSelect() {
+  if (_arReticle && _arReticle.visible && !_arPlaced) {
+    const p = new THREE.Vector3();
+    const q = new THREE.Quaternion();
+    const s = new THREE.Vector3();
+    _arReticle.matrix.decompose(p, q, s);
+    
+    // Align rotation horizontally
+    const euler = new THREE.Euler().setFromQuaternion(q);
+    xrRig.rotation.set(0, -euler.y, 0);
+    
+    // Position the virtual origin (0,0,0) at the physical hit point accounting for rotation
+    const pVirtual = p.clone().applyQuaternion(xrRig.quaternion);
+    xrRig.position.copy(pVirtual).negate();
+
+    _arPlaced = true;
+    _arReticle.visible = false;
+    if (_arHitTestSource) {
+      _arHitTestSource.cancel();
+      _arHitTestSource = null;
+    }
+  }
+}
+
+// ===== AR OCCLUSION MESHES =====
+const occlusionMeshes = new Map();
+const occlusionMaterial = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: true });
+
+function updateOcclusionMeshes(frame, refSpace) {
+  if (!frame.detectedMeshes) return;
+  frame.detectedMeshes.forEach(xrMesh => {
+    let mesh = occlusionMeshes.get(xrMesh);
+    if (!mesh) {
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.BufferAttribute(xrMesh.vertices, 3));
+      geometry.setIndex(new THREE.BufferAttribute(xrMesh.indices, 1));
+      mesh = new THREE.Mesh(geometry, occlusionMaterial);
+      mesh.renderOrder = -1; // Render before other objects to write depth
+      mesh.matrixAutoUpdate = false;
+      xrRig.add(mesh);
+      occlusionMeshes.set(xrMesh, mesh);
+      mesh.userData.lastChangedTime = xrMesh.lastChangedTime;
+    } else if (mesh.userData.lastChangedTime !== xrMesh.lastChangedTime) {
+      mesh.geometry.setAttribute('position', new THREE.BufferAttribute(xrMesh.vertices, 3));
+      mesh.geometry.setIndex(new THREE.BufferAttribute(xrMesh.indices, 1));
+      mesh.userData.lastChangedTime = xrMesh.lastChangedTime;
+    }
+    const pose = frame.getPose(xrMesh.meshSpace, refSpace);
+    if (pose) {
+      mesh.matrix.fromArray(pose.transform.matrix);
+    }
+  });
+
+  // Remove stale meshes
+  for (const [xrMesh, mesh] of occlusionMeshes.entries()) {
+    if (!frame.detectedMeshes.has(xrMesh)) {
+      xrRig.remove(mesh);
+      mesh.geometry.dispose();
+      occlusionMeshes.delete(xrMesh);
+    }
+  }
+}
+
 // ===== MAIN LOOP =====
 let _lastTime = performance.now();
 
@@ -788,6 +878,39 @@ renderer.setAnimationLoop(function mainLoop() {
   const now = performance.now();
   const dt = Math.min((now - _lastTime) / 1000, 0.05);
   _lastTime = now;
+
+  // ── AR Hit Testing & Occlusion ──
+  if (_xrSess && _xrSess.environmentBlendMode === 'alpha-blend') {
+    const frame = renderer.xr.getFrame();
+    const refSpace = renderer.xr.getReferenceSpace();
+    
+    if (frame && refSpace) {
+      updateOcclusionMeshes(frame, refSpace);
+
+      if (!_arPlaced) {
+        if (!_arHitTestSourceRequested) {
+          _xrSess.requestReferenceSpace('viewer').then(function(rs) {
+            _xrSess.requestHitTestSource({ space: rs }).then(function(source) {
+              _arHitTestSource = source;
+            });
+          });
+          _xrSess.addEventListener('select', onARSelect);
+          _arHitTestSourceRequested = true;
+        }
+        
+        if (_arHitTestSource) {
+          const hits = frame.getHitTestResults(_arHitTestSource);
+          if (hits.length > 0) {
+            const pose = hits[0].getPose(refSpace);
+            _arReticle.visible = true;
+            _arReticle.matrix.fromArray(pose.transform.matrix);
+          } else {
+            _arReticle.visible = false;
+          }
+        }
+      }
+    }
+  }
 
   updateFactory(now);   // ✅ أضف هذا السطر هنا
 
@@ -1029,7 +1152,12 @@ function setupXRSystems() {
     getActive: () => getActive(),
     moveJoint: (name, deg) => getActive().moveJoint(name, deg),
     setDrive: (s, t) => {
-      const active = getActive(); active.setDrive(s, t);
+      const active = getActive();
+      if (robotApi?.listener?.controlsDrive && s === 0 && t === 0) {
+        for (const r of robots) if (r !== active) r.setDrive(0, 0);
+        return;
+      }
+      active.setDrive(s, t);
       for (const r of robots) if (r !== active) r.setDrive(0, 0);
     },
     setSqueeze: (v) => {
@@ -1118,6 +1246,75 @@ function setupXRSystems() {
     },
     deployCreator: () => {
       document.getElementById('btnDeployRobot')?.click();
+    },
+    isUIHovered: () => _vrUI && _vrUI.visible && _vrUI._hoveredEl != null,
+    teleport: (x, z) => {
+      if (_xrSess) {
+        xrRig.position.x = x;
+        xrRig.position.z = z;
+      }
+    },
+    movePlayer: (dx, dz) => {
+      if (_xrSess) {
+        const dir = new THREE.Vector3();
+        camera.getWorldDirection(dir);
+        dir.y = 0;
+        if (dir.lengthSq() < 0.001) {
+          xrRig.getWorldDirection(dir);
+          dir.y = 0;
+        }
+        dir.normalize();
+        const right = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0, 1, 0)).normalize();
+        
+        const moveVec = new THREE.Vector3();
+        moveVec.add(dir.multiplyScalar(dz));
+        moveVec.add(right.multiplyScalar(dx));
+
+        if (moveVec.lengthSq() > 0.000001) {
+          const startVec = new THREE.Vector3();
+          camera.getWorldPosition(startVec);
+          
+          // Check collisions at two heights: knee (0.3m) and chest (1.2m)
+          const heights = [0.3, 1.2];
+          const margin = 0.35; // Player collision radius
+          const moveDir = moveVec.clone().normalize();
+          
+          for (const h of heights) {
+            const start = new CANNON.Vec3(startVec.x, h, startVec.z);
+            const end = new CANNON.Vec3(
+              start.x + moveVec.x + moveDir.x * margin,
+              start.y,
+              start.z + moveVec.z + moveDir.z * margin
+            );
+            
+            const result = new CANNON.RaycastResult();
+            world.raycastClosest(start, end, { mode: CANNON.Ray.CLOSEST, skipBackfaces: true }, result);
+            
+            if (result.hasHit) {
+              const n = result.hitNormalWorld;
+              const dot = moveVec.x * n.x + moveVec.z * n.z;
+              if (dot < 0) { // Sliding along the wall/box
+                moveVec.x -= dot * n.x;
+                moveVec.z -= dot * n.z;
+              }
+            }
+          }
+        }
+        
+        xrRig.position.add(moveVec);
+      }
+    },
+    turnPlayer: (angle) => {
+      if (_xrSess && _xrSess.environmentBlendMode !== 'alpha-blend') {
+        const camPos = new THREE.Vector3();
+        camera.getWorldPosition(camPos);
+        xrRig.rotation.y += angle;
+        xrRig.updateMatrixWorld(true);
+        const newCamPos = new THREE.Vector3();
+        camera.getWorldPosition(newCamPos);
+        xrRig.position.x += (camPos.x - newCamPos.x);
+        xrRig.position.z += (camPos.z - newCamPos.z);
+      }
     }
   };
 
@@ -1148,7 +1345,10 @@ function cleanupXRSystems() {
 async function startXRSession(mode) {
   try {
     const opts = mode === 'immersive-ar'
-      ? { requiredFeatures: ['hit-test'], optionalFeatures: ['local-floor', 'dom-overlay'], domOverlay: { root: document.body } }
+      ? { 
+          optionalFeatures: ['local-floor', 'hit-test', 'depth-sensing', 'hand-tracking', 'mesh'], 
+          depthSensing: { usagePreference: ["cpu-optimized", "gpu-optimized"], dataFormatPreference: ["luminance-alpha", "float32"] }
+        }
       : { optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking'] };
 
     const session = await navigator.xr.requestSession(mode, opts);
@@ -1157,8 +1357,14 @@ async function startXRSession(mode) {
 
     if (mode === 'immersive-ar') {
       scene.background = null;
+      scene.fog = null; // Fix blackness behind objects
       renderer.setClearAlpha(0);
       if (factoryGroup) factoryGroup.visible = false;
+      
+      // Reset AR placement
+      _arPlaced = false;
+      _arHitTestSourceRequested = false;
+      if (_arReticle) _arReticle.visible = false;
     }
 
     setupXRSystems();
@@ -1173,8 +1379,23 @@ async function startXRSession(mode) {
       _xrSess = null;
       if (mode === 'immersive-ar') {
         scene.background = new THREE.Color(0x8a9aaa);
+        scene.fog = new THREE.FogExp2(0x8a9aaa, 0.018);
         renderer.setClearAlpha(1);
         if (factoryGroup) factoryGroup.visible = true;
+        
+        if (_arReticle) _arReticle.visible = false;
+        if (_arHitTestSource) { _arHitTestSource.cancel(); _arHitTestSource = null; }
+        
+        // Cleanup occlusion meshes
+        for (const mesh of occlusionMeshes.values()) {
+          xrRig.remove(mesh);
+          mesh.geometry.dispose();
+        }
+        occlusionMeshes.clear();
+
+        // Reset xrRig to default when leaving AR
+        xrRig.position.set(0, 0, 8);
+        xrRig.rotation.set(0, 0, 0);
       }
       removePlayerBodiesFromWorld();
       cleanupXRSystems();

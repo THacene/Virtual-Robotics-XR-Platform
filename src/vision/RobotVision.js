@@ -192,7 +192,14 @@ export class RobotVision {
 
       this._updateCamPos(vc, robot);
       this.renderer.setRenderTarget(vc.rt);
+
+      const prevBg = this.scene.background;
+      if (!prevBg) this.scene.background = new THREE.Color(0x2a3b4c);
+
       this.renderer.render(this.scene, vc.cam);
+
+      this.scene.background = prevBg;
+
       this.renderer.readRenderTargetPixels(vc.rt, 0, 0, 160, 120, vc.pixelBuf);
 
       const img = new ImageData(new Uint8ClampedArray(vc.pixelBuf), 160, 120);
@@ -270,16 +277,26 @@ export class RobotVision {
       const vc = this.cams[i];
       this._updateCamPos(vc, activeRobot);
       this.renderer.setRenderTarget(vc.rt);
-      this.renderer.render(this.scene, vc.cam);
-
-      this.renderer.readRenderTargetPixels(vc.rt, 0, 0, vw, vh, vc.pixelBuf);
-
-      // الرسم المرئي للمستخدم فقط عند فتح العرض (الكشف يستمر بالخلفية دائماً) أو عند طلبه من الـ VR
+      // Only render visual feed if requested
       if ((this.displayVisible || this.forceRender) && this.displayCtx) {
+        // Temporarily force an opaque background so the feed doesn't become transparent in AR mode
+        const prevBg = this.scene.background;
+        if (!prevBg) this.scene.background = new THREE.Color(0x2a3b4c); // Solid dark slate sky
+
+        this.renderer.render(this.scene, vc.cam);
+
+        // Restore background
+        this.scene.background = prevBg;
+
+        this.renderer.readRenderTargetPixels(vc.rt, 0, 0, vw, vh, vc.pixelBuf);
+
         const img = new ImageData(new Uint8ClampedArray(vc.pixelBuf), vw, vh);
         this._flipY(img);
         this.tempCtx.putImageData(img, 0, 0);
         this.displayCtx.drawImage(this.tempCanvas, 0, i * vh);
+      } else {
+        // Just render for frustum detection, we don't need pixels
+        this.renderer.render(this.scene, vc.cam);
       }
 
       const dets = this._frustumDetect(vc, i);

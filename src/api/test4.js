@@ -295,63 +295,63 @@
       //  ✅ v3 — تتبع المسار بمتحكم القيادة الأصلي المجرّب
       // ══════════════════════════════════════
       // ══════════════════════════════════════
-//  ✅ v3.1 — تتبع المسار: أسرع + استمرارية بلا توقف
-// ══════════════════════════════════════
-_driveWithDetour(ar, finalGoal, stopRadius = 0.18, speedMult = 1.0) {
-  const base = ar.parts.base.group.position;
-  const now = performance.now();
+      //  ✅ v3.1 — تتبع المسار: أسرع + استمرارية بلا توقف
+      // ══════════════════════════════════════
+      _driveWithDetour(ar, finalGoal, stopRadius = 0.18, speedMult = 1.0) {
+        const base = ar.parts.base.group.position;
+        const now = performance.now();
 
-  const goalDist = Math.hypot(finalGoal.x - base.x, finalGoal.z - base.z);
-  if (goalDist < stopRadius) { ar.setDrive(0, 0); this._path = null; return true; }
+        const goalDist = Math.hypot(finalGoal.x - base.x, finalGoal.z - base.z);
+        if (goalDist < stopRadius) { ar.setDrive(0, 0); this._path = null; return true; }
 
-  // إعادة التخطيط: كل 2.5 ثانية أو عند تحرك الهدف   ✅ كان 1.5
-  const goalMoved = !this._pathGoal ||
-    Math.hypot(this._pathGoal.x - finalGoal.x, this._pathGoal.z - finalGoal.z) > 0.5;
-  if (!this._path || goalMoved || now - this._plannedAt > 2500) {
-    this._path = this._planPath(ar, finalGoal);
-    this._pathGoal = { x: finalGoal.x, z: finalGoal.z };
-    this._pathIdx = 0;
-    this._plannedAt = now;
-    if (!this._path) {
-      ar.setDrive(0, 0);
-      logger('⏳ No path available — waiting for clearance...', 'warn');
-      return false;
-    }
-    // ✅ تخطَّ النقاط التي نحن عندها أصلاً → لا توقف وانطلاق بعد كل تخطيط
-    while (this._pathIdx < this._path.length - 1 &&
-           Math.hypot(this._path[this._pathIdx].x - base.x,
-                      this._path[this._pathIdx].z - base.z) < 0.6) {
-      this._pathIdx++;
-    }
-  }
+        // إعادة التخطيط: كل 2.5 ثانية أو عند تحرك الهدف   ✅ كان 1.5
+        const goalMoved = !this._pathGoal ||
+          Math.hypot(this._pathGoal.x - finalGoal.x, this._pathGoal.z - finalGoal.z) > 0.5;
+        if (!this._path || goalMoved || now - this._plannedAt > 2500) {
+          this._path = this._planPath(ar, finalGoal);
+          this._pathGoal = { x: finalGoal.x, z: finalGoal.z };
+          this._pathIdx = 0;
+          this._plannedAt = now;
+          if (!this._path) {
+            ar.setDrive(0, 0);
+            logger('⏳ No path available — waiting for clearance...', 'warn');
+            return false;
+          }
+          // ✅ تخطَّ النقاط التي نحن عندها أصلاً → لا توقف وانطلاق بعد كل تخطيط
+          while (this._pathIdx < this._path.length - 1 &&
+            Math.hypot(this._path[this._pathIdx].x - base.x,
+              this._path[this._pathIdx].z - base.z) < 0.6) {
+            this._pathIdx++;
+          }
+        }
 
-  // النقطة الحالية على المسار
-  let wp = this._path[Math.min(this._pathIdx, this._path.length - 1)];
-  const isLast = this._pathIdx >= this._path.length - 1;
-  if (Math.hypot(wp.x - base.x, wp.z - base.z) < (isLast ? stopRadius : 0.45)) {
-    if (!isLast) {
-      this._pathIdx++;
-      wp = this._path[this._pathIdx];
-    } else {
-      ar.setDrive(0, 0); this._path = null; return true;
-    }
-  }
+        // النقطة الحالية على المسار
+        let wp = this._path[Math.min(this._pathIdx, this._path.length - 1)];
+        const isLast = this._pathIdx >= this._path.length - 1;
+        if (Math.hypot(wp.x - base.x, wp.z - base.z) < (isLast ? stopRadius : 0.45)) {
+          if (!isLast) {
+            this._pathIdx++;
+            wp = this._path[this._pathIdx];
+          } else {
+            ar.setDrive(0, 0); this._path = null; return true;
+          }
+        }
 
-  // ── قيادة أسرع ──   ✅ كان: عتبة 0.4 / ضرب 0.75 / حد 0.18-0.55 / دوران 1.7
-  const targetYaw = Math.atan2(wp.x - base.x, wp.z - base.z);
-  const yawErr = normalizeRad(targetYaw - (ar.baseState?.yaw ?? 0));
-  const mv = ar.description.movement;
+        // ── قيادة أسرع ──   ✅ كان: عتبة 0.4 / ضرب 0.75 / حد 0.18-0.55 / دوران 1.7
+        const targetYaw = Math.atan2(wp.x - base.x, wp.z - base.z);
+        const yawErr = normalizeRad(targetYaw - (ar.baseState?.yaw ?? 0));
+        const mv = ar.description.movement;
 
-  let driveSpeed = 0;
-  if (Math.abs(yawErr) < 0.5) {
-    driveSpeed = clamp(Math.hypot(wp.x - base.x, wp.z - base.z) * 0.8,
-      0.25, mv.speed * 0.75 * speedMult);
-  }
-  const turnSpeed = Math.abs(yawErr) < 0.04 ? 0 : clamp(yawErr * 2.2, -mv.turn, mv.turn);
+        let driveSpeed = 0;
+        if (Math.abs(yawErr) < 0.5) {
+          driveSpeed = clamp(Math.hypot(wp.x - base.x, wp.z - base.z) * 0.8,
+            0.25, mv.speed * 0.75 * speedMult);
+        }
+        const turnSpeed = Math.abs(yawErr) < 0.04 ? 0 : clamp(yawErr * 2.2, -mv.turn, mv.turn);
 
-  ar.setDrive(driveSpeed, turnSpeed);
-  return false;
-}
+        ar.setDrive(driveSpeed, turnSpeed);
+        return false;
+      }
 
 
       // ══════════════════════════════════════
@@ -893,6 +893,43 @@ _driveWithDetour(ar, finalGoal, stopRadius = 0.18, speedMult = 1.0) {
       status: () => _listener?.phase ?? 'idle',
       stop: () => _listener?.forceStop(),
     };
+  };
+
+  window.pickAndPlaceZone = async function (idbox = 1, zoneName = 'A') {
+    const ZONES = {
+      'A': { x: -5, z: 5 },
+      'B': { x: 5, z: 5 },
+      'C': { x: -5, z: -5 },
+      'D': { x: 5, z: -5 }
+    };
+    
+    const baseTarget = ZONES[zoneName] || ZONES['A'];
+    let targetX = baseTarget.x;
+    let targetZ = baseTarget.z;
+
+    // Dynamic Drop Location: Check if the spot is blocked by other boxes
+    if (window.__boxes) {
+      let isBlocked = true;
+      let attempt = 0;
+      while (isBlocked && attempt < 20) { // Safety limit
+        isBlocked = false;
+        for (const b of window.__boxes) {
+          if (b.id === idbox) continue; // ignore the box we are currently moving
+          // If another box is within 0.55m of our target, it's blocked!
+          const d = Math.hypot(b.body.position.x - targetX, b.body.position.z - targetZ);
+          if (d < 0.55) {
+            isBlocked = true;
+            targetX += 0.6; // Shift target to the right and try again
+            break;
+          }
+        }
+        attempt++;
+      }
+    }
+
+    const finalTarget = { x: targetX, z: targetZ };
+    console.log(`[PickPlaceZone] 🗺️ Mapping Zone ${zoneName} to coordinates (${finalTarget.x.toFixed(2)}, ${finalTarget.z.toFixed(2)})`);
+    return await window.pickAndPlace(idbox, finalTarget);
   };
 
   window.stopMission = function () {
